@@ -761,3 +761,82 @@ body[data-store="ev"] .pill.ok{background:var(--ok-soft);color:var(--ok)}
 .brand b{letter-spacing:-.03em}
 .brand .bsub{font-weight:600;font-size:15px;color:var(--muted);letter-spacing:-.01em;margin-left:-3px}
 @media (max-width:1100px){ .brand .bsub{display:none} }
+
+/* =================== v7: everyday polish =================== */
+body.noscroll{overflow:hidden}
+main{animation:pagein .22s ease-out}
+@keyframes pagein{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* onboarding cards */
+.onboard{display:flex;gap:14px;align-items:center;background:var(--surface);border-radius:var(--r);box-shadow:var(--sh-1);padding:14px 16px;margin-top:18px;position:relative;flex-wrap:wrap}
+.onboard .grow{flex:1 1 240px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.onboard .muted{font-size:14px}
+.onboard>.iconbtn{position:absolute;top:8px;right:8px}
+.obic{width:42px;height:42px;border-radius:12px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex:none}
+.obform{display:flex;gap:8px;flex-wrap:wrap;margin-right:30px}
+.obform select{padding:9px 12px;border-radius:10px;border:0;background:var(--fill);font-weight:600}
+.checklist ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px 18px;flex:2 1 360px;margin-right:30px}
+.checklist li{display:flex;gap:8px;align-items:center;font-size:14px}
+.checklist li i{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--line);display:grid;place-items:center;flex:none;color:#fff}
+.checklist li.done i{background:var(--ok);border-color:var(--ok)}
+.checklist li.done i svg{width:12px;height:12px}
+.checklist li.done span{color:var(--muted);text-decoration:line-through}
+.checklist li a{font-weight:600;color:var(--accent);text-decoration:none}
+.checklist li a:hover{text-decoration:underline}
+
+/* recently viewed: a horizontal rail */
+.hscroll{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,240px);gap:14px;overflow-x:auto;padding:4px 2px 12px;scroll-snap-type:x mandatory;scrollbar-width:thin}
+.hscroll .card{scroll-snap-align:start}
+
+/* saved searches */
+.saved-on{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.btn svg{flex:none}
+.fcount{background:var(--accent);color:var(--accent-ink);border-radius:999px;font-size:11px;padding:0 6px;min-width:18px;display:inline-grid;place-items:center}
+.ssic svg{width:34px;height:34px}
+.newpill{background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:12px;padding:4px 10px;border-radius:999px;align-self:center}
+.iconbtn #savedBadge .badge,.iconbtn .badge{position:absolute;top:2px;right:0}
+
+/* listing gallery: swipe + tap to open the viewer */
+.gmain{cursor:zoom-in;touch-action:pan-y;user-select:none}
+.gmain img{pointer-events:none}
+
+/* full-screen photo viewer */
+.viewer{position:fixed;inset:0;z-index:80;background:#07080A;color:#fff;display:flex;flex-direction:column;outline:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+.vw-top{display:flex;align-items:center;gap:12px;padding:12px 14px;font-size:14px}
+.vw-count{font-family:var(--mono);opacity:.8}
+.vw-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.vw-btn{width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:22px;cursor:pointer;line-height:1}
+.vw-btn:hover{background:rgba(255,255,255,.22)}
+.vw-stage{flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;touch-action:none;cursor:zoom-in}
+.vw-stage.zoomed{cursor:grab}
+.vw-stage img{max-width:100%;max-height:100%;object-fit:contain;transition:transform .18s ease-out;will-change:transform;user-select:none;-webkit-user-drag:none}
+.vw-nav{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;border:0;background:rgba(255,255,255,.14);color:#fff;cursor:pointer;display:grid;place-items:center}
+.vw-nav:hover{background:rgba(255,255,255,.26)}
+.vw-nav.l{left:max(14px,env(safe-area-inset-left,0px))}.vw-nav.r{right:max(14px,env(safe-area-inset-right,0px))}
+.vw-thumbs{display:flex;gap:8px;justify-content:center;padding:10px 14px 4px;overflow-x:auto}
+.vw-thumbs button{width:58px;height:44px;border-radius:8px;overflow:hidden;border:2px solid transparent;padding:0;background:#222;cursor:pointer;flex:none;opacity:.6}
+.vw-thumbs button[aria-current="true"]{border-color:#fff;opacity:1}
+.vw-thumbs img{width:100%;height:100%;object-fit:cover}
+.vw-hint{text-align:center;font-size:12px;opacity:.6;margin:4px 0 12px}
+
+/* filters: sheet chrome is only for phones */
+.sheethead,.sheetfoot,.sheetbg{display:none}
+@media (max-width:900px){
+  .rail{position:fixed!important;left:0;right:0;bottom:0;top:auto;z-index:70;display:flex!important;flex-direction:column;max-height:86vh;overflow:auto;border-radius:22px 22px 0 0!important;padding:0 18px calc(16px + env(safe-area-inset-bottom,0px))!important;transform:translateY(105%);transition:transform .25s ease;box-shadow:0 -20px 50px -20px rgba(0,0,0,.5)}
+  .rail.open{transform:none}
+  .sheethead{display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--surface);padding:16px 0 10px;z-index:1;margin-bottom:4px}
+  .sheethead b{font-size:18px}
+  .sheethead::before{content:"";position:absolute;left:50%;top:6px;width:40px;height:4px;border-radius:2px;background:var(--line);transform:translateX(-50%)}
+  .sheetfoot{display:block;position:sticky;bottom:calc(-16px - env(safe-area-inset-bottom,0px));background:var(--surface);padding:12px 0 calc(16px + env(safe-area-inset-bottom,0px));margin-top:auto}
+  .sheetbg{display:block;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:69;animation:fadein .2s}
+  @keyframes fadein{from{opacity:0}}
+}
+@media (max-width:720px){
+  .vw-nav{display:none}
+  .onboard{margin-top:12px}
+  .checklist ul{margin-right:0}
+  .obform{margin-right:0;width:100%}
+  .obform select{flex:1}
+  .hscroll{grid-auto-columns:minmax(170px,190px)}
+}
+@media (prefers-reduced-motion:reduce){ main{animation:none} .rail{transition:none} .vw-stage img{transition:none} }

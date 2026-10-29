@@ -59,6 +59,9 @@ const I = {
   right:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg>',
   upload:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/></svg>',
   check:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>',
+  sliders:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+  bell:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 1 0-12 0c0 6.5-2.5 8-2.5 8h17S18 15.5 18 9z"/><path d="M10.3 20.5a2 2 0 0 0 3.4 0"/></svg>',
+  trash:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
   bolt:'<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>',
   cam:'<svg class="cam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   plus:'<svg class="plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
@@ -76,7 +79,7 @@ const S = {
   f:{store:"apple", q:"", cat:"", grades:new Set(), min:"", max:"", batt:"", lockOnly:false, hideSold:true, sort:"new", maxMiles:"", minYear:"", fsd:false, clean:false},
   route:"home", param:"", activeThread:null, msgs:[], msgTid:null, photoIx:0,
   draft:null, draftErr:"", busy:false, uploading:0, railOpen:false, menuOpen:false, allStates:false,
-  mineTab:"active", store:"apple", lastStore:"apple", sellStore:"apple", activity:null, seenEvents:null, sellers:{}, pending:[], msgDraft:{}, offerOpen:false, offerAmt:"", inboxTab:"all", threadsLoaded:false, authMode:"in", authErr:"", next:"", acctMsg:""
+  mineTab:"active", searches:[], savedTab:"devices", store:"apple", lastStore:"apple", sellStore:"apple", activity:null, seenEvents:null, sellers:{}, pending:[], msgDraft:{}, offerOpen:false, offerAmt:"", inboxTab:"all", threadsLoaded:false, authMode:"in", authErr:"", next:"", acctMsg:""
 };
 
 /* ---------- api ---------- */
@@ -110,8 +113,9 @@ function cityList(id, state){
 /* ---------- filtering ---------- */
 const active = l => l.status!=="sold";
 function inLoc(l, loc=S.loc){ if(loc.state && l.state!==loc.state) return false; if(loc.city && (l.city||"").toLowerCase()!==loc.city.toLowerCase()) return false; return true; }
-function filtered(){
-  const f=S.f, q=f.q.trim().toLowerCase();
+function filtered(){ return filterWith(S.f, S.loc); }
+function filterWith(f, loc){
+  const q=f.q.trim().toLowerCase();
   const words = q.split(/\s+/).filter(Boolean);
   const xs = S.listings.filter(l => {
     if(storeOf(l)!==(f.store||"apple")) return false;
@@ -121,7 +125,7 @@ function filtered(){
       if(f.minYear && !(Number(sp.year)>=Number(f.minYear))) return false;
       if(f.fsd && sp.autopilot!=="fsd") return false;
       if(f.clean && !(EVD.isVehicle(l.cat) && (sp.title==="clean"||sp.title==="lien"))) return false; }
-    if(!inLoc(l)) return false;
+    if(!inLoc(l, loc)) return false;
     if(f.cat && l.cat!==f.cat) return false;
     if(f.grades.size && !f.grades.has(l.grade)) return false;
     if(f.min && Number(l.price) < Number(f.min)) return false;
@@ -234,6 +238,7 @@ function viewHome(){
   const catCount = k => live.filter(l=>l.cat===k && inLoc(l)).length;
   const popular = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).slice(0,4);
   return `
+  ${locPrompt()}${welcomeChecklist()}
   <section class="hero"><div class="wrap herogrid">
     <div>
       <div class="eyebrow">Used Apple devices · Local pickup in all 50 states</div>
@@ -264,6 +269,7 @@ function viewHome(){
   </div></section>
 
   ${communityHTML()}
+  ${recentRail("apple")}
 
   <section class="section"><div class="wrap">
     <div class="sechead"><h2>Shop by device</h2><span class="muted">${esc(locLabel())}</span></div>
@@ -347,6 +353,7 @@ function viewEvHome(){
   const catCount = k => live.filter(l=>l.cat===k && inLoc(l)).length;
   const locQ = `${S.loc.state?"&state="+S.loc.state:""}${S.loc.city?"&city="+encodeURIComponent(S.loc.city):""}`;
   return `
+  ${locPrompt()}${welcomeChecklist()}
   <section class="hero"><div class="wrap herogrid">
     <div>
       <div class="eyebrow">Used Teslas and Tesla gear · Local pickup in all 50 states</div>
@@ -377,6 +384,7 @@ function viewEvHome(){
   </div></section>
 
   ${communityHTML("ev")}
+  ${recentRail("ev")}
 
   <section class="section"><div class="wrap">
     <div class="sechead"><h2>Shop by model</h2><span class="muted">${esc(locLabel())}</span></div>
@@ -522,6 +530,156 @@ function viewSellEv(editId){
   </form></div>`;
 }
 
+/* ---------- saved searches ---------- */
+// Turn a saved "shop?…" link into filter settings without touching the current shop state
+function parseShopQuery(query){
+  const qs = String(query||"").replace(/^shop\??/,""), p = new URLSearchParams(qs);
+  const st = String(p.get("state")||"").toUpperCase();
+  return {
+    loc: {state: STATES[st] ? st : "", city: STATES[st] ? (p.get("city")||"") : ""},
+    f: {store:p.get("store")==="ev"?"ev":"apple", q:p.get("q")||"", cat:p.get("cat")||"", min:p.get("min")||"", max:p.get("max")||"", batt:p.get("batt")||"",
+        grades:new Set((p.get("grade")||"").split("").filter(g=>GRADES[g])), lockOnly:p.get("lock")==="1", hideSold:true, sort:p.get("sort")||"new",
+        maxMiles:p.get("miles")||"", minYear:p.get("year")||"", fsd:p.get("fsd")==="1", clean:p.get("clean")==="1"}
+  };
+}
+function searchMatches(s){ const {f,loc}=parseShopQuery(s.query); return filterWith(f, loc); }
+const searchNew = s => searchMatches(s).filter(l=>l.createdAt > (s.seenAt||0) && !isMe(l.sellerId)).length;
+function currentSavedSearch(){ const q=shopHash(); return S.searches.find(s=>s.query===q); }
+function shopTitle(f, loc){
+  const ev=f.store==="ev";
+  const cat = f.cat ? catOf(f.cat).p : ev ? "Teslas and Tesla gear" : "Apple devices";
+  const place = loc.city ? `${loc.city}, ${loc.state}` : loc.state ? STATES[loc.state] : "the US";
+  return `${f.q?`“${f.q}” · `:""}${cat} in ${place}`;
+}
+function searchDescribe(s){
+  const {f}=parseShopQuery(s.query), bits=[];
+  if(f.min||f.max) bits.push(f.min&&f.max?`${money(f.min)}–${money(f.max)}`:f.max?`under ${money(f.max)}`:`over ${money(f.min)}`);
+  if(f.grades.size) bits.push([...f.grades].map(g=>"Grade "+g).join(", "));
+  if(f.batt) bits.push(`battery ${f.batt}%+`);
+  if(f.lockOnly) bits.push("lock off");
+  if(f.maxMiles) bits.push(`under ${nf(f.maxMiles)} mi`);
+  if(f.minYear) bits.push(`${f.minYear}+`);
+  if(f.fsd) bits.push("FSD"); if(f.clean) bits.push("clean title");
+  return bits.join(" · ");
+}
+async function loadSearches(){ if(!S.me) return; try{ S.searches=await api("GET","/api/searches"); render(true); }catch(e){} }
+function saveSearchDialog(){
+  if(!S.me) return goSignIn();
+  const def = shopTitle(S.f, S.loc);
+  openDialog(`<form class="dlg" data-form="saveSearch"><h2 id="dlgTitle">Save this search</h2>
+    <p class="muted" style="font-size:14px">Find it again under Saved. We'll show how many new listings match since you last looked.</p>
+    <div class="field"><label for="ssName">Name</label><input id="ssName" maxlength="60" value="${esc(def)}"></div>
+    <div class="dact"><button type="button" class="btn ghost" data-act="closeDlg">Cancel</button><button class="btn primary" type="submit">Save search</button></div></form>`);
+}
+
+/* ---------- recently viewed (this device only) ---------- */
+function rememberViewed(id){
+  let r = lsGet("as_recent", []); if(!Array.isArray(r)) r=[];
+  r = [id, ...r.filter(x=>x!==id)].slice(0,16); lsSet("as_recent", r);
+}
+function recentRail(store){
+  const ids = lsGet("as_recent", []); if(!Array.isArray(ids) || !ids.length) return "";
+  const xs = ids.map(id=>S.listings.find(l=>l.id===id)).filter(l=>l && storeOf(l)===store);
+  if(!xs.length) return "";
+  return `<section class="section recent"><div class="wrap">
+    <div class="sechead"><h2>Recently viewed</h2><button class="btn sm ghost" data-act="clearRecent">Clear</button></div>
+    <div class="hscroll">${xs.slice(0,10).map(l=>cardHTML(l)).join("")}</div></div></section>`;
+}
+
+/* ---------- onboarding ---------- */
+function locPrompt(){
+  if(S.loc.state || lsGet("as_locprompt_done", false)) return "";
+  return `<div class="wrap"><div class="onboard locprompt">
+    <span class="obic">${I.pin.replace('width="15" height="15"','width="20" height="20"')}</span>
+    <div class="grow"><b>Shopping nearby?</b><span class="muted">Hinova Marketplace is local pickup only. Pick your state to see listings you can actually go and get.</span></div>
+    <form class="obform" data-form="locPrompt"><select id="lpState" aria-label="Your state">${stateOptions("", "Choose your state")}</select><button class="btn primary sm" type="submit">Show nearby</button></form>
+    <button class="iconbtn sm" data-act="locPromptDone" aria-label="Dismiss">×</button></div></div>`;
+}
+function welcomeChecklist(){
+  if(!S.me || lsGet("as_welcome_done_"+S.me.id, false)) return "";
+  const listed = (S.mine||[]).length>0 || S.listings.some(l=>isMe(l.sellerId));
+  const steps = [
+    ["Create your account", true, ""],
+    ["Set your city", !!S.me.state, "#account"],
+    ["Save a search to track new listings", S.searches.length>0, S.store==="ev"?"#shop?store=ev":"#shop"],
+    [S.store==="ev"?"List a Tesla or part":"List your first device", listed, S.store==="ev"?"#sell?store=ev":"#sell"],
+  ];
+  const done = steps.filter(s=>s[1]).length;
+  if(done===steps.length) return "";
+  return `<div class="wrap"><div class="onboard checklist">
+    <div class="grow"><b>Welcome, ${esc((S.me.name||"").split(" ")[0]||"there")}! Get set up</b><span class="muted">${done} of ${steps.length} done</span>
+      <div class="bar-p" style="margin-top:8px"><i style="width:${done/steps.length*100}%"></i></div></div>
+    <ul>${steps.map(([t,ok,href])=>`<li class="${ok?"done":""}">${ok?`<i>${I.check}</i><span>${t}</span>`:`<i></i><a href="${href}">${t}</a>`}</li>`).join("")}</ul>
+    <button class="iconbtn sm" data-act="welcomeDone" aria-label="Dismiss">×</button></div></div>`;
+}
+
+/* ---------- photo viewer: swipe, pinch / double-tap zoom, keys ---------- */
+const VW = {photos:[], i:0, scale:1, x:0, y:0, pointers:new Map(), start:null, pinch:null, lastTap:0, title:""};
+function openViewer(photos, i, title){
+  if(!photos.length) return;
+  Object.assign(VW, {photos, i, title:title||"", scale:1, x:0, y:0});
+  const v=$("#viewer"); v.hidden=false; document.body.classList.add("noscroll"); paintViewer(); v.focus();
+}
+function closeViewer(){ $("#viewer").hidden=true; document.body.classList.remove("noscroll"); if(S.route==="item"){ S.photoIx=VW.i; render(true); } }
+function paintViewer(){
+  const v=$("#viewer"), n=VW.photos.length;
+  v.innerHTML = `<div class="vw-top"><span class="vw-count">${VW.i+1} / ${n}</span><span class="vw-title">${esc(VW.title)}</span><button class="vw-btn" data-vw="close" aria-label="Close photo viewer">×</button></div>
+    <div class="vw-stage" id="vwStage"><img id="vwImg" src="${esc(VW.photos[VW.i])}" alt="${esc(VW.title)}, photo ${VW.i+1} of ${n}" draggable="false"></div>
+    ${n>1?`<button class="vw-nav l" data-vw="prev" aria-label="Previous photo">${I.left}</button><button class="vw-nav r" data-vw="next" aria-label="Next photo">${I.right}</button>
+    <div class="vw-thumbs">${VW.photos.map((p,j)=>`<button data-vw="go" data-i="${j}" aria-current="${j===VW.i}" aria-label="Photo ${j+1}"><img src="${esc(p)}" alt=""></button>`).join("")}</div>`:""}
+    <p class="vw-hint">${matchMedia("(pointer:coarse)").matches?"Swipe to browse · pinch or double-tap to zoom":"Arrow keys to browse · double-click or scroll to zoom · Esc to close"}</p>`;
+  applyZoom();
+}
+function applyZoom(){ const im=$("#vwImg"); if(im) im.style.transform=`translate(${VW.x}px,${VW.y}px) scale(${VW.scale})`; const st=$("#vwStage"); if(st) st.classList.toggle("zoomed", VW.scale>1.01); }
+function vwGo(i){ const n=VW.photos.length; VW.i=(i+n)%n; VW.scale=1; VW.x=0; VW.y=0; paintViewer(); }
+function vwZoomAt(cx, cy, to){
+  const st=$("#vwStage").getBoundingClientRect(), ox=cx-(st.left+st.width/2), oy=cy-(st.top+st.height/2);
+  const k=to/VW.scale; VW.x=(VW.x-ox)*k+ox; VW.y=(VW.y-oy)*k+oy; VW.scale=to;
+  if(VW.scale<=1.01){ VW.scale=1; VW.x=0; VW.y=0; } applyZoom();
+}
+function initViewer(){
+  const v=$("#viewer");
+  v.addEventListener("click", e=>{ const b=e.target.closest("[data-vw]"); if(!b) return;
+    const a=b.dataset.vw; if(a==="close") closeViewer(); if(a==="prev") vwGo(VW.i-1); if(a==="next") vwGo(VW.i+1); if(a==="go") vwGo(Number(b.dataset.i)); });
+  v.addEventListener("keydown", e=>{ if(e.key==="Escape") closeViewer(); if(e.key==="ArrowLeft") vwGo(VW.i-1); if(e.key==="ArrowRight") vwGo(VW.i+1); });
+  v.addEventListener("dblclick", e=>{ if(e.target.id==="vwImg"||e.target.id==="vwStage") vwZoomAt(e.clientX, e.clientY, VW.scale>1?1:2.5); });
+  v.addEventListener("wheel", e=>{ if(!e.target.closest("#vwStage")) return; e.preventDefault(); vwZoomAt(e.clientX, e.clientY, Math.min(4, Math.max(1, VW.scale*(e.deltaY<0?1.15:0.87)))); }, {passive:false});
+  v.addEventListener("pointerdown", e=>{ if(!e.target.closest("#vwStage")) return;
+    VW.pointers.set(e.pointerId, {x:e.clientX, y:e.clientY}); e.target.setPointerCapture && e.target.setPointerCapture(e.pointerId);
+    if(VW.pointers.size===1){ VW.start={x:e.clientX, y:e.clientY, ox:VW.x, oy:VW.y, t:Date.now()}; }
+    if(VW.pointers.size===2){ const [a,b]=[...VW.pointers.values()]; VW.pinch={d:Math.hypot(a.x-b.x,a.y-b.y), s:VW.scale, cx:(a.x+b.x)/2, cy:(a.y+b.y)/2}; VW.start=null; } });
+  v.addEventListener("pointermove", e=>{ if(!VW.pointers.has(e.pointerId)) return; VW.pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    if(VW.pinch && VW.pointers.size===2){ const [a,b]=[...VW.pointers.values()]; const s=Math.min(4, Math.max(1, VW.pinch.s*Math.hypot(a.x-b.x,a.y-b.y)/VW.pinch.d)); vwZoomAt(VW.pinch.cx, VW.pinch.cy, s); return; }
+    if(VW.start && VW.scale>1){ VW.x=VW.start.ox+(e.clientX-VW.start.x); VW.y=VW.start.oy+(e.clientY-VW.start.y); applyZoom(); }
+    else if(VW.start){ const im=$("#vwImg"); if(im) im.style.transform=`translateX(${e.clientX-VW.start.x}px)`; } });
+  const up = e=>{ if(!VW.pointers.has(e.pointerId)) return; VW.pointers.delete(e.pointerId);
+    if(VW.pointers.size<2) VW.pinch=null;
+    if(VW.start && VW.pointers.size===0){ const dx=e.clientX-VW.start.x, dy=e.clientY-VW.start.y, dt=Date.now()-VW.start.t;
+      if(VW.scale<=1.01){
+        if(Math.abs(dx)>50 && Math.abs(dx)>Math.abs(dy)) vwGo(VW.i+(dx<0?1:-1));
+        else if(dy>90 && Math.abs(dy)>Math.abs(dx)) closeViewer();
+        else { applyZoom(); if(dt<250 && Math.abs(dx)<10 && Math.abs(dy)<10){ const now=Date.now(); if(now-VW.lastTap<300){ vwZoomAt(e.clientX,e.clientY,2.5); VW.lastTap=0; } else VW.lastTap=now; } }
+      } else if(dt<250 && Math.abs(dx)<10 && Math.abs(dy)<10){ const now=Date.now(); if(now-VW.lastTap<300){ vwZoomAt(e.clientX,e.clientY,1); VW.lastTap=0; } else VW.lastTap=now; }
+      VW.start=null; } };
+  v.addEventListener("pointerup", up); v.addEventListener("pointercancel", up);
+}
+// swipe the inline gallery on the listing page; a tap opens the viewer
+function initGallerySwipe(){
+  let g=null;
+  document.addEventListener("pointerdown", e=>{ const m=e.target.closest(".gmain"); if(!m || e.target.closest("button")) return; g={x:e.clientX, y:e.clientY, t:Date.now()}; });
+  document.addEventListener("pointerup", e=>{ if(!g) return; const m=e.target.closest(".gmain"); const dx=e.clientX-g.x, dy=e.clientY-g.y, dt=Date.now()-g.t; g=null;
+    if(!m || S.route!=="item") return; const l=findListing(S.param); const n=(l&&l.photos||[]).length;
+    if(n>1 && Math.abs(dx)>45 && Math.abs(dx)>Math.abs(dy)){ S.photoIx=(S.photoIx+(dx<0?1:-1)+n)%n; render(true); return; }
+    if(n && Math.abs(dx)<10 && Math.abs(dy)<10 && dt<500) openViewer(l.photos.map(photoSrc), Math.min(S.photoIx,n-1), l.title); });
+}
+
+/* ---------- native share sheet, falling back to copy ---------- */
+async function shareLink(title){
+  const url=location.href;
+  if(navigator.share){ try{ await navigator.share({title: title||document.title, text: title||"", url}); return; }catch(e){ if(e && e.name==="AbortError") return; } }
+  copyLink();
+}
+
 /* ---------- views: shop ---------- */
 function viewShop(){
   const f=S.f, xs=filtered();
@@ -556,7 +714,8 @@ function viewShop(){
       ${cityChips}
     </div>
     <div class="shop">
-      <aside class="rail ${S.railOpen?"open":""}" aria-label="Filters">
+      ${S.railOpen?'<div class="sheetbg" data-act="rail" aria-hidden="true"></div>':""}<aside class="rail ${S.railOpen?"open":""}" aria-label="Filters">
+        <div class="sheethead"><b>Filters</b><button class="iconbtn sm" data-act="rail" aria-label="Close filters">×</button></div>
         <fieldset><legend class="eyebrow">Location</legend>
           <select class="input" id="fState" aria-label="State">${stateOptions(S.loc.state,"All of the US")}</select>
           ${S.loc.state?`<input class="input" id="fCity" list="fCities" placeholder="Any city in ${esc(S.loc.state)}" value="${esc(S.loc.city)}" aria-label="City">${cityList("fCities",S.loc.state)}`:""}
@@ -578,10 +737,11 @@ function viewShop(){
         <label class="check"><input id="flock" type="checkbox" ${f.lockOnly?"checked":""}> Activation Lock off only</label>`}
         <label class="check"><input id="fsold" type="checkbox" ${f.hideSold?"checked":""}> Hide sold</label>
         <button class="btn sm ghost" data-act="reset" style="align-self:flex-start">Clear all filters</button>
+        <div class="sheetfoot"><button class="btn primary block" data-act="rail">Show ${xs.length} ${xs.length===1?"result":"results"}</button></div>
       </aside>
       <section style="min-width:0">
         <div class="listbar">
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>${xs.length} ${xs.length===1?"result":"results"}</b><button class="btn sm mfilter" data-act="rail">Filters</button><div class="activef">${activeF.map(([k,t])=>`<button data-act="unf" data-k="${esc(k)}" aria-label="Remove filter ${esc(t)}">${esc(t)} ×</button>`).join("")}</div></div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>${xs.length} ${xs.length===1?"result":"results"}</b><button class="btn sm mfilter" data-act="rail">${I.sliders}Filters${(activeF.length+(f.cat?1:0))?` <span class="fcount">${activeF.length+(f.cat?1:0)}</span>`:""}</button>${S.loaded?(currentSavedSearch()?`<button class="btn sm saved-on" data-act="unsaveSearch" data-id="${esc(currentSavedSearch().id)}">${I.bell}Saved search</button>`:`<button class="btn sm" data-act="saveSearch">${I.bell}Save search</button>`):""}<div class="activef">${activeF.map(([k,t])=>`<button data-act="unf" data-k="${esc(k)}" aria-label="Remove filter ${esc(t)}">${esc(t)} ×</button>`).join("")}</div></div>
           <select class="selectsm" id="fsort" aria-label="Sort">
             <option value="new" ${f.sort==="new"?"selected":""}>Newest first</option>
             <option value="low" ${f.sort==="low"?"selected":""}>Price: low to high</option>
@@ -703,7 +863,7 @@ function growComposer(){ const ta=$("#msgText"); if(ta){ ta.style.height="auto";
 function viewItem(id){
   const l = findListing(id);
   if(!l) return `<div class="wrap" style="padding-block:30px"><div class="empty"><h2>${S.loaded?"This listing was removed":"Loading…"}</h2>${S.loaded?`<a class="btn" href="#shop">Browse devices</a>`:""}</div></div>`;
-  pingView(l);
+  pingView(l); rememberViewed(l.id);
   const photos = (l.photos||[]).map(photoSrc);
   const ix = Math.min(S.photoIx, Math.max(0,photos.length-1));
   const main = photos.length ? `<img src="${esc(photos[ix])}" alt="${esc(l.title)}, photo ${ix+1} of ${photos.length}">` : (ICON[l.cat]||ICON.other).replace('width="64" height="64"','width="150" height="150"');
@@ -919,7 +1079,7 @@ function viewMine(){
   const tabs=[["active","Active"],["reserved","Reserved"],["sold","Sold"]];
   const xs = by(S.mineTab);
   return `<div class="wrap">
-    <div class="pagehead"><div><div class="eyebrow">Selling</div><h1>My listings</h1></div><div class="actions"><a class="btn" href="#account">Account settings</a><a class="btn primary" href="#sell">Sell another</a></div></div>
+    <div class="pagehead"><div><div class="eyebrow">Selling</div><h1>My listings</h1></div><div class="actions"><a class="btn" href="#saved">${I.heart.replace('width="18" height="18"','width="16" height="16"')}Saved${(()=>{const k=S.searches.reduce((n,x)=>n+searchNew(x),0);return k?` <span class="badge">${k} new</span>`:""})()}</a><a class="btn" href="#account">Account settings</a><a class="btn primary" href="#sell">Sell another</a></div></div>
     <div class="tabs" role="tablist">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${S.mineTab===k}" data-act="mineTab" data-k="${k}">${n} <span class="mono muted">${by(k).length}</span></button>`).join("")}</div>
     ${S.mine==null?`<div class="rows"><p class="muted">Loading…</p></div>`: xs.length?`<div class="rows">${xs.map(rowHTML).join("")}</div>`
       : `<div class="empty" style="margin-bottom:50px"><h2>${S.mineTab==="active"?"Nothing for sale right now":S.mineTab==="reserved"?"Nothing reserved":"Nothing sold yet"}</h2><p class="muted">${S.mineTab==="active"?"List a device and it will show up for buyers in your state.":"Listings move here as buyers reserve and buy them."}</p>${S.mineTab==="active"?`<a class="btn primary" href="#sell">Sell a device</a>`:""}</div>`}
@@ -929,8 +1089,21 @@ function viewMine(){
 function viewSaved(){
   if(!S.me){ goSignIn(); return ""; }
   const xs = S.listings.filter(l=>S.saved.has(l.id));
-  return `<div class="wrap"><div class="pagehead"><div><div class="eyebrow">Your list</div><h1>Saved devices</h1></div></div>
-    ${xs.length?`<div class="grid" style="padding-bottom:50px">${xs.map(l=>cardHTML(l)).join("")}</div>`:`<div class="empty" style="margin-bottom:50px"><div class="ic">${I.heart}</div><h2>Nothing saved yet</h2><p class="muted">Tap the heart on any listing to keep it here and compare later.</p><a class="btn primary" href="#shop">Browse devices</a></div>`}</div>`;
+  const tab = S.savedTab;
+  const totalNew = S.searches.reduce((n,x)=>n+searchNew(x),0);
+  const tabs = `<div class="tabs" role="tablist"><button role="tab" aria-selected="${tab==="devices"}" data-act="savedTab" data-k="devices">Saved listings <span class="mono muted">${xs.length}</span></button><button role="tab" aria-selected="${tab==="searches"}" data-act="savedTab" data-k="searches">Saved searches <span class="mono muted">${S.searches.length}</span>${totalNew?` <span class="badge">${totalNew}</span>`:""}</button></div>`;
+  let body;
+  if(tab==="searches"){
+    body = S.searches.length ? `<div class="rows">${S.searches.map(x=>{ const all=searchMatches(x), n=searchNew(x), d=searchDescribe(x), {f}=parseShopQuery(x.query);
+        return `<div class="rowi ssrow"><span class="th ssic">${ICON[f.cat]||(f.store==="ev"?ICON.model3:ICON.iphone)}</span>
+          <div style="min-width:0"><h3><a href="#${esc(x.query)}" data-act="openSearch" data-id="${esc(x.id)}">${esc(x.name)}</a></h3>
+            <div class="rowstats"><span>${all.length} ${all.length===1?"match":"matches"}</span>${d?`<span>${esc(d)}</span>`:""}<span>Saved ${ago(x.createdAt)}</span></div></div>
+          <div class="actions">${n?`<span class="newpill">${n} new</span>`:""}<a class="btn sm primary" href="#${esc(x.query)}" data-act="openSearch" data-id="${esc(x.id)}">View</a><button class="btn sm ghost" data-act="deleteSearch" data-id="${esc(x.id)}" aria-label="Delete saved search ${esc(x.name)}">${I.trash}</button></div></div>`; }).join("")}</div>`
+      : `<div class="empty" style="margin-bottom:50px"><div class="ic">${I.bell}</div><h2>No saved searches yet</h2><p class="muted">Search or filter, then tap <b>Save search</b>. We'll show how many new listings match each time you come back.</p><a class="btn primary" href="#shop">Start a search</a></div>`;
+  } else {
+    body = xs.length?`<div class="grid" style="padding-bottom:50px">${xs.map(l=>cardHTML(l)).join("")}</div>`:`<div class="empty" style="margin-bottom:50px"><div class="ic">${I.heart}</div><h2>Nothing saved yet</h2><p class="muted">Tap the heart on any listing to keep it here and compare later.</p><a class="btn primary" href="#shop">Browse devices</a></div>`;
+  }
+  return `<div class="wrap"><div class="pagehead"><div><div class="eyebrow">Your list</div><h1>Saved</h1></div></div>${tabs}${body}</div>`;
 }
 function viewSeller(id){
   const p = S.sellers[id];
@@ -1026,12 +1199,14 @@ function currentStore(){
 function render(soft){
   const app=$("#app");
   const ae=document.activeElement, fid=ae&&ae.id&&app.contains(ae)?ae.id:null, sel=fid&&ae.selectionStart!=null?[ae.selectionStart,ae.selectionEnd]:null, val=fid?ae.value:null;
+  const railEl=$(".rail"), railTop = railEl ? railEl.scrollTop : 0;
   const msgsEl=$("#msgs"), atBottom = msgsEl ? (msgsEl.scrollHeight-msgsEl.scrollTop-msgsEl.clientHeight<40) : true;
   S.store = currentStore(); if(["ev","home","shop","item"].includes(S.route)) S.lastStore = S.store;
   const views = {ev:viewEvHome, home:viewHome, shop:viewShop, item:()=>viewItem(S.param), sell:()=>viewSell(null), edit:()=>viewSell(S.param), mine:viewMine, saved:viewSaved, seller:()=>viewSeller(S.param), account:viewAccount, inbox:()=>viewInbox(null), thread:()=>viewInbox(S.param), chat:()=>viewChat(S.param), signin:viewSignIn};
   app.innerHTML=(views[S.route]||viewHome)();
   if(fid){ const el=document.getElementById(fid); if(el && el!==document.activeElement){ if(["aemail","apass","aname","acity","accName","accCity","fCity"].includes(fid) && val!=null) el.value=val; el.focus({preventScroll:true}); if(sel) try{el.setSelectionRange(sel[0],sel[1]);}catch(e){} } }
   const m=$("#msgs"); if(m && (atBottom||!soft)) m.scrollTop=m.scrollHeight;
+  const rl=$(".rail"); if(rl && railTop) rl.scrollTop=railTop;
   growComposer();
   paintChrome();
 }
@@ -1050,6 +1225,10 @@ function paintChrome(){
   $("#unread").innerHTML = n?`<span class="badge">${n}</span>`:"";
   $("#unreadTab").innerHTML = n?`<span class="badge">${n}</span>`:"";
   $("#unreadBell").innerHTML = n?`<span class="badge">${n}</span>`:"";
+  const sn = S.me ? S.searches.reduce((k,x)=>k+searchNew(x),0) : 0;
+  const sb=$("#savedBadge"); if(sb) sb.innerHTML = sn?`<span class="badge">${sn}</span>`:"";
+  const pb=$("#profileBadge"); if(pb) pb.innerHTML = sn?`<span class="badge">${sn}</span>`:"";
+  document.body.classList.toggle("noscroll", (S.railOpen && S.route==="shop" && matchMedia("(max-width:900px)").matches) || !$("#viewer").hidden);
   $("#pageLabel").textContent = {chat:"Messages",thread:"Messages",sell:"Sell",edit:"Edit",inbox:"Messages",mine:"Profile",account:"Account",saved:"Saved",signin:"Sign in",seller:"Seller"}[S.route]||"";
   document.body.classList.toggle("signedout", !S.me);
   document.body.classList.toggle("chatmode", isPhone() && (S.route==="chat" || S.route==="thread"));
@@ -1226,10 +1405,17 @@ document.addEventListener("click", async e => {
     case "offerClose": S.offerOpen=false; render(true); break;
     case "offerPreset": S.offerAmt=t.dataset.v; { const i=$("#offerAmt"); if(i) i.value=t.dataset.v; } break;
     case "authMode": S.authMode=S.authMode==="up"?"in":"up"; S.authErr=""; render(); break;
-    case "logout": try{ await api("POST","/api/auth/logout"); }catch(err){} S.me=null; S.threads=[]; S.saved=new Set(); S.mine=null; S.msgTid=null; S.menuOpen=false; toast("Signed out"); location.hash="home"; render(); break;
+    case "logout": try{ await api("POST","/api/auth/logout"); }catch(err){} S.me=null; S.threads=[]; S.saved=new Set(); S.mine=null; S.searches=[]; S.msgTid=null; S.menuOpen=false; toast("Signed out"); location.hash="home"; render(); break;
     case "save": { e.stopPropagation(); if(!S.me) return goSignIn(); const id=t.dataset.id; const on=!S.saved.has(id); on?S.saved.add(id):S.saved.delete(id); render(true); toast(on?"Saved":"Removed from saved");
       try{ await api(on?"PUT":"DELETE",`/api/saved/${encodeURIComponent(id)}`); }catch(err){ fail(err); } break; }
-    case "share": copyLink(); break;
+    case "saveSearch": saveSearchDialog(); break;
+    case "unsaveSearch": case "deleteSearch": { const id=t.dataset.id; try{ await api("DELETE",`/api/searches/${encodeURIComponent(id)}`); S.searches=S.searches.filter(x=>x.id!==id); toast("Saved search removed"); render(true); }catch(err){ fail(err); } break; }
+    case "openSearch": { const id=t.dataset.id; const x=S.searches.find(y=>y.id===id); if(x){ x.seenAt=Date.now(); api("PATCH",`/api/searches/${encodeURIComponent(id)}/seen`).catch(()=>{}); } break; }
+    case "savedTab": S.savedTab=t.dataset.k; render(true); break;
+    case "clearRecent": lsSet("as_recent",[]); render(true); break;
+    case "locPromptDone": lsSet("as_locprompt_done",true); render(true); break;
+    case "welcomeDone": if(S.me) lsSet("as_welcome_done_"+S.me.id,true); render(true); break;
+    case "share": { const l=S.route==="item"?findListing(S.param):null; shareLink(l?`${l.title} · ${money(l.price)}`:""); break; }
     case "report": reportDialog(t.dataset.id); break;
     case "askDel": confirmDialog("Delete this listing?", "del", t.dataset.id); break;
     case "del": { const id=t.dataset.id; closeDialog(); try{ await api("DELETE",`/api/listings/${encodeURIComponent(id)}`); toast("Listing deleted"); await loadListings(); loadMine(); if(S.route==="item") location.hash="mine"; else render(true); }catch(err){ fail(err); } break; }
@@ -1260,6 +1446,8 @@ document.addEventListener("submit", async e => {
   if(kind==="heroSearch"){ S.f.store=form.dataset.store==="ev"?"ev":"apple"; S.f.q=$("#heroQ").value.trim(); S.f.cat=""; setLoc($("#heroState").value,""); location.hash=shopHash(); return; }
   if(kind==="loc"){ const st=$("#locState").value; setLoc(st, st?$("#locCity").value.trim():""); closeDialog(); afterLocChange(); return; }
   if(kind==="sell") return saveListing();
+  if(kind==="saveSearch"){ const name=$("#ssName").value.trim(); try{ const x=await api("POST","/api/searches",{name, query:shopHash()}); S.searches=[x, ...S.searches.filter(y=>y.id!==x.id)]; closeDialog(); toast("Search saved. Find it under Saved."); render(true); }catch(err){ closeDialog(); fail(err); } return; }
+  if(kind==="locPrompt"){ const st=$("#lpState").value; if(!st) return toast("Choose your state first"); setLoc(st,""); lsSet("as_locprompt_done",true); toast(`Showing listings near ${STATES[st]}`); render(); return; }
   if(kind==="report"){ const reason=(form.querySelector("input[name=reason]:checked")||{}).value; try{ await api("POST",`/api/listings/${encodeURIComponent(form.dataset.id)}/report`,{reason,note:$("#repNote").value}); closeDialog(); toast("Thanks. We'll review this listing."); }catch(err){ closeDialog(); fail(err); } return; }
   if(kind==="account"){
     S.busy=true; S.acctMsg=""; render();
@@ -1272,7 +1460,7 @@ document.addEventListener("submit", async e => {
     S.busy=true; S.authErr=""; render();
     try{ S.me=await api("POST", up?"/api/auth/register":"/api/auth/login", body); S.busy=false; toast(up?"Welcome to Hinova Marketplace":"Signed in");
       if(S.me.state && !S.loc.state) setLoc(S.me.state,S.me.city);
-      loadThreads(); loadSaved(); loadMine(); loadActivity(); location.hash = S.next && S.next!=="signin" ? S.next : "home"; render(); }
+      loadThreads(); loadSaved(); loadMine(); loadActivity(); loadSearches(); location.hash = S.next && S.next!=="signin" ? S.next : "home"; render(); }
     catch(err){ S.busy=false; S.authErr=err.message; render(); }
     return;
   }
@@ -1365,6 +1553,7 @@ document.addEventListener("paste", e => { if((S.route==="sell"||S.route==="edit"
 $("#dlg").addEventListener("click", e => { if(e.target.id==="dlg") closeDialog(); });
 
 /* ---------- boot ---------- */
+initViewer(); initGallerySwipe();
 (async () => {
   paintChrome();
   try{ S.me = await api("GET","/api/me"); }catch(e){}
@@ -1372,6 +1561,6 @@ $("#dlg").addEventListener("click", e => { if(e.target.id==="dlg") closeDialog()
   route();
   loadActivity();
   await loadListings();
-  if(S.me){ loadThreads(); loadSaved(); loadMine(); }
+  if(S.me){ loadThreads(); loadSaved(); loadMine(); loadSearches(); }
 })();
 })();

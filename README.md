@@ -6,6 +6,7 @@ A marketplace for buying and selling used Apple devices — and, in the **Tesla*
 
 ## Features
 
+- **Everyday polish**: full-screen photo viewer (swipe, pinch or double-tap zoom, arrow keys, Esc), swipeable listing gallery, Recently viewed rail, saved searches with "N new" badges (Saved page, header heart, Profile tab), phone filters as a bottom sheet with "Show N results", native share sheet, first-visit location prompt and a getting-started checklist after sign-up
 - **Tesla storefront** at `#ev`: its own dark home page, Apple | Tesla switch in the header. Vehicle listings (Model 3, Y, S, X, Cybertruck) capture year, trim, colour, mileage, estimated range, Autopilot package, VIN, title status, accident history, owners and seller-confirmed checks; the title is built from year + model + trim. Accessories (charging, wheels and tires, parts) capture product name, which models they fit and whether they're genuine. Shop filters for mileage, model year, Full Self-Driving and clean title. VINs are shown only to signed-in members. Independent marketplace — not affiliated with Apple Inc. or Tesla, Inc.
 - **Community activity** (home page): live feed of real members joining, devices listed and devices sold, plus member / for-sale / sold / city counts. Members appear by first name and last initial only; anyone can opt out in Account settings
 - **US locations**: every listing has a state (all 50 + DC) and city; shoppers pick a location, browse state and city pages (`#shop?state=AZ&city=Phoenix`), and see city chips with counts
@@ -64,6 +65,9 @@ DATABASE_URL=postgres://localhost/hinova_marketplace npm start
 | GET / POST | `/api/threads/:id/messages` | Read or send messages (participants only) |
 | POST | `/api/threads/:id/accept` | Seller accepts an offer and reserves the device |
 | GET / PUT / DELETE | `/api/saved/:id` | Saved listings |
+| GET / POST | `/api/searches` | Your saved searches (a `shop?…` link plus a name; up to 25) |
+| PATCH | `/api/searches/:id/seen` | Mark a saved search's matches as seen |
+| DELETE | `/api/searches/:id` | Delete a saved search |
 
 ## What's next for production
 

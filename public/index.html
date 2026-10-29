@@ -35,7 +35,7 @@
     <nav class="nav" aria-label="Main">
       <a class="iconbtn bell" href="#inbox" aria-label="Notifications"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 1 0-12 0c0 6.5-2.5 8-2.5 8h17S18 15.5 18 9z"/><path d="M10.3 20.5a2 2 0 0 0 3.4 0"/></svg><span id="unreadBell"></span></a>
       <a class="iconbtn" href="#inbox" aria-label="Messages" title="Messages"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M20 15.5a2 2 0 0 1-2 2H8l-4 3.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg><span id="unread"></span></a>
-      <a class="iconbtn" href="#saved" aria-label="Saved" title="Saved"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M12 20s-7-4.3-9-8.6C1.6 8 3.8 4.5 7.2 4.5c1.9 0 3.3 1 4.8 2.8 1.5-1.8 2.9-2.8 4.8-2.8 3.4 0 5.6 3.5 4.2 6.9C19 15.7 12 20 12 20z"/></svg></a>
+      <a class="iconbtn" href="#saved" aria-label="Saved" title="Saved"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M12 20s-7-4.3-9-8.6C1.6 8 3.8 4.5 7.2 4.5c1.9 0 3.3 1 4.8 2.8 1.5-1.8 2.9-2.8 4.8-2.8 3.4 0 5.6 3.5 4.2 6.9C19 15.7 12 20 12 20z"/></svg><span id="savedBadge"></span></a>
       <a class="btn primary sellbtn" href="#sell"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Sell</a>
       <div class="who" id="who"></div>
     </nav>
@@ -64,9 +64,10 @@
   <a href="#shop" data-tab="shop" data-act="focusSearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg>Search</a>
   <a href="#sell" data-tab="sell" class="tabsell"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>Sell</a>
   <a href="#inbox" data-tab="inbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M20 15.5a2 2 0 0 1-2 2H8l-4 3.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>Messages<i id="unreadTab"></i></a>
-  <a href="#mine" data-tab="mine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.2-3.6 4-5.5 7.5-5.5s6.3 1.9 7.5 5.5"/></svg>Profile</a>
+  <a href="#mine" data-tab="mine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.2-3.6 4-5.5 7.5-5.5s6.3 1.9 7.5 5.5"/></svg>Profile<i id="profileBadge"></i></a>
 </nav>
 
+<div id="viewer" class="viewer" tabindex="-1" role="dialog" aria-modal="true" aria-label="Photo viewer" hidden></div>
 <dialog id="dlg" aria-labelledby="dlgTitle"></dialog>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <script src="/us.js"></script>

@@ -121,6 +121,16 @@ async function migrate() {
     ALTER TABLE listings ADD COLUMN IF NOT EXISTS store TEXT NOT NULL DEFAULT 'apple';
     ALTER TABLE listings ADD COLUMN IF NOT EXISTS specs JSONB NOT NULL DEFAULT '{}'::jsonb;
     CREATE INDEX IF NOT EXISTS listings_store ON listings(store);
+    -- v7: saved searches (a shop link plus when its matches were last looked at)
+    CREATE TABLE IF NOT EXISTS saved_searches (
+      id            TEXT PRIMARY KEY,
+      user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name          TEXT NOT NULL,
+      query         TEXT NOT NULL,
+      seen_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (user_id, query)
+    );
     CREATE INDEX IF NOT EXISTS users_created ON users(created_at DESC);
   `);
   await q(`DELETE FROM sessions WHERE expires_at < now()`);
@@ -660,6 +670,38 @@ app.post("/api/threads/:id/accept", wrap(async (req, res) => {
   const up = await q(`UPDATE listings SET status='reserved', reserved_for=$2, agreed_price=$3, updated_at=now() WHERE id=$1 AND status='active' RETURNING id`, [t.listing_id, t.buyer_id, amount]);
   if (!up.rows[0]) throw new HttpError(409, "This device is already reserved or sold.");
   await addMessage(t, u.id, "sys", `Offer of $${amount} accepted. Reserved for pickup, pay at meetup.`, null);
+  res.json({ ok: true });
+}));
+
+/* saved searches */
+const searchOut = (r) => ({ id: r.id, name: r.name, query: r.query, seenAt: ms(r.seen_at), createdAt: ms(r.created_at) });
+app.get("/api/searches", wrap(async (req, res) => {
+  const u = needUser(req);
+  const r = await q(`SELECT * FROM saved_searches WHERE user_id=$1 ORDER BY created_at DESC`, [u.id]);
+  res.json(r.rows.map(searchOut));
+}));
+app.post("/api/searches", wrap(async (req, res) => {
+  const u = needUser(req);
+  const query = String(req.body.query || "").trim();
+  const name = str(req.body.name, 60);
+  // only shop links, e.g. "shop?store=ev&state=AZ&cat=modely"
+  if (!/^shop(\?[A-Za-z0-9_\-.~%&=+]*)?$/.test(query) || query.length > 400) throw new HttpError(400, "That search can't be saved.");
+  if (!name) throw new HttpError(400, "Give the search a name.");
+  const n = await q(`SELECT count(*)::int AS n FROM saved_searches WHERE user_id=$1`, [u.id]);
+  if (n.rows[0].n >= 25) throw new HttpError(400, "You can save up to 25 searches. Delete one to add another.");
+  const r = await q(`INSERT INTO saved_searches (id, user_id, name, query) VALUES ($1,$2,$3,$4)
+                     ON CONFLICT (user_id, query) DO UPDATE SET name=EXCLUDED.name RETURNING *`, [newId("S"), u.id, name, query]);
+  res.status(201).json(searchOut(r.rows[0]));
+}));
+app.patch("/api/searches/:id/seen", wrap(async (req, res) => {
+  const u = needUser(req);
+  const r = await q(`UPDATE saved_searches SET seen_at=now() WHERE id=$1 AND user_id=$2 RETURNING *`, [req.params.id, u.id]);
+  if (!r.rows[0]) throw new HttpError(404, "Saved search not found.");
+  res.json(searchOut(r.rows[0]));
+}));
+app.delete("/api/searches/:id", wrap(async (req, res) => {
+  const u = needUser(req);
+  await q(`DELETE FROM saved_searches WHERE id=$1 AND user_id=$2`, [req.params.id, u.id]);
   res.json({ ok: true });
 }));
 
