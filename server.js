@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const path = require("path");
 const { Pool } = require("pg");
 const US = require("./public/us.js");
+const EV = require("./public/ev.js");
 
 const PORT = process.env.PORT || 3000;
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -116,6 +117,10 @@ async function migrate() {
     ALTER TABLE listings ADD COLUMN IF NOT EXISTS checks TEXT[] NOT NULL DEFAULT '{}';
     -- v5: members can hide themselves from the public community activity feed
     ALTER TABLE users ADD COLUMN IF NOT EXISTS show_activity BOOLEAN NOT NULL DEFAULT true;
+    -- v6: Tesla storefront — which store a listing belongs to, plus vehicle/accessory details
+    ALTER TABLE listings ADD COLUMN IF NOT EXISTS store TEXT NOT NULL DEFAULT 'apple';
+    ALTER TABLE listings ADD COLUMN IF NOT EXISTS specs JSONB NOT NULL DEFAULT '{}'::jsonb;
+    CREATE INDEX IF NOT EXISTS listings_store ON listings(store);
     CREATE INDEX IF NOT EXISTS users_created ON users(created_at DESC);
   `);
   await q(`DELETE FROM sessions WHERE expires_at < now()`);
@@ -145,6 +150,8 @@ function parseCookies(h) {
   return out;
 }
 const CATS = ["iphone", "ipad", "mac", "watch", "airpods", "other"];
+const EV_CATS = EV.CATS.map((c) => c.k);
+const EV_MODELS = Object.keys(EV.MODELS);
 const GRADES = ["A", "B", "C"];
 const STATUSES = ["active", "reserved", "sold"];
 const REPORT_REASONS = ["scam", "stolen", "wrong-info", "offensive", "sold-elsewhere", "other"];
@@ -170,8 +177,15 @@ class HttpError extends Error {
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const ms = (d) => (d ? new Date(d).getTime() : null);
 
-function listingOut(r) {
+// VINs are shown to signed-in members only; everyone else just sees that one is on file
+function specsOut(specs, viewer) {
+  const sp = { ...(specs || {}) };
+  if (sp.vin && !viewer) { sp.vinOnFile = true; delete sp.vin; }
+  return sp;
+}
+function listingOut(r, viewer) {
   return {
+    store: r.store || "apple", specs: specsOut(r.specs, viewer),
     id: r.id, sellerId: r.seller_id, sellerName: r.seller_name, title: r.title, cat: r.cat,
     storage: r.storage, grade: r.grade, battery: r.battery, lockOff: r.lock_off, price: r.price,
     origPrice: r.orig_price, city: r.city || r.area || "", state: r.state, desc: r.descr, photos: r.photos,
@@ -181,6 +195,8 @@ function listingOut(r) {
   };
 }
 function validateListing(b) {
+  const store = b.store === "ev" ? "ev" : "apple";
+  if (store === "ev") return validateEvListing(b);
   const title = str(b.title, 80);
   const cat = CATS.includes(b.cat) ? b.cat : null;
   const grade = GRADES.includes(b.grade) ? b.grade : null;
@@ -200,6 +216,56 @@ function validateListing(b) {
     title, cat, grade, price, battery, state, city,
     checks: Array.isArray(b.checks) ? [...new Set(b.checks.filter((c) => CHECKS.includes(c)))] : [],
     storage: str(b.storage, 12), lockOff: !!b.lockOff, desc: String(b.desc ?? "").trim().slice(0, 1200), photos,
+    store, specs: {},
+  };
+}
+const intIn = (v, lo, hi) => { if (v === null || v === undefined || v === "") return null; const n = Math.round(Number(v)); return Number.isFinite(n) && n >= lo && n <= hi ? n : undefined; };
+function validateEvListing(b) {
+  const cat = EV_CATS.includes(b.cat) ? b.cat : null;
+  if (!cat) throw new HttpError(400, "Choose a Tesla model or accessory type.");
+  const grade = GRADES.includes(b.grade) ? b.grade : null;
+  if (!grade) throw new HttpError(400, "Choose a condition grade.");
+  const vehicle = EV.isVehicle(cat);
+  const price = Math.round(Number(b.price));
+  const maxPrice = vehicle ? 500000 : 50000;
+  if (!(price > 0 && price <= maxPrice)) throw new HttpError(400, `Set a price between $1 and $${maxPrice.toLocaleString("en-US")}.`);
+  const state = cleanState(b.state), city = cleanCity(b.city);
+  if (!state) throw new HttpError(400, "Choose the state where buyers will pick it up.");
+  if (!city) throw new HttpError(400, city === null ? "Use letters only for the city, for example “San Diego”." : "Enter the city where buyers will pick it up.");
+  const sp = b.specs && typeof b.specs === "object" ? b.specs : {};
+  const specs = {};
+  let title;
+  if (vehicle) {
+    const m = EV.MODELS[cat];
+    const year = intIn(sp.year, m.from, EV.MAX_YEAR);
+    if (!year) throw new HttpError(400, `Choose the model year (${m.n} from ${m.from} to ${EV.MAX_YEAR}).`);
+    const mileage = intIn(sp.mileage, 0, 1000000);
+    if (mileage === null || mileage === undefined) throw new HttpError(400, "Enter the mileage from the odometer.");
+    const range = intIn(sp.range, 0, 700);
+    if (range === undefined) throw new HttpError(400, "Estimated range should be between 0 and 700 miles.");
+    const owners = intIn(sp.owners, 1, 10);
+    if (owners === undefined) throw new HttpError(400, "Number of owners should be between 1 and 10.");
+    const vin = String(sp.vin || "").toUpperCase().replace(/\s+/g, "");
+    if (vin && !/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) throw new HttpError(400, "A VIN has 17 letters and numbers (no I, O or Q).");
+    Object.assign(specs, {
+      year, mileage, trim: str(sp.trim, 40), color: str(sp.color, 30),
+      ...(range !== null ? { range } : {}), ...(owners !== null ? { owners } : {}), ...(vin ? { vin } : {}),
+      autopilot: EV.AUTOPILOT[sp.autopilot] ? sp.autopilot : "none",
+      title: EV.TITLE[sp.title] ? sp.title : "clean",
+      accidents: EV.ACCIDENTS[sp.accidents] ? sp.accidents : "none",
+    });
+    title = `${year} ${m.n}${specs.trim ? " " + specs.trim : ""}`;
+  } else {
+    title = str(b.title, 80);
+    if (!title) throw new HttpError(400, "Name the product, for example “Wall Connector (Gen 3)”.");
+    specs.compat = Array.isArray(sp.compat) ? [...new Set(sp.compat.filter((c) => EV_MODELS.includes(c)))] : [];
+  }
+  const allowed = EV.CHECKS[vehicle ? "vehicle" : "accessory"].map((c) => c[0]);
+  const photos = Array.isArray(b.photos) ? b.photos.filter((p) => /^P[\w-]{6,40}$/.test(p)).slice(0, MAX_PHOTOS) : [];
+  return {
+    store: "ev", specs, title, cat, grade, price, battery: null, state, city, storage: "", lockOff: true,
+    checks: Array.isArray(b.checks) ? [...new Set(b.checks.filter((c) => allowed.includes(c)))] : [],
+    desc: String(b.desc ?? "").trim().slice(0, 1200), photos,
   };
 }
 
@@ -340,24 +406,27 @@ app.get("/api/activity", wrap(async (req, res) => {
               (SELECT count(*)::int FROM users WHERE created_at > now() - interval '7 days') AS new_members,
               (SELECT count(*)::int FROM listings WHERE status <> 'sold') AS for_sale,
               (SELECT count(*)::int FROM listings WHERE status = 'sold') AS sold,
+              (SELECT count(*)::int FROM listings WHERE status <> 'sold' AND store = 'ev') AS ev_for_sale,
+              (SELECT count(*)::int FROM listings WHERE status = 'sold' AND store = 'ev') AS ev_sold,
               (SELECT count(DISTINCT state || '|' || lower(city))::int FROM (
                  SELECT state, city FROM listings WHERE state <> '' AND city <> ''
                  UNION SELECT state, city FROM users WHERE state <> '' AND city <> '') c) AS cities,
               (SELECT count(DISTINCT state)::int FROM (
                  SELECT state FROM listings WHERE state <> '' UNION SELECT state FROM users WHERE state <> '') s) AS states`),
     q(`SELECT id, name, city, state, created_at FROM users WHERE show_activity ORDER BY created_at DESC LIMIT 15`),
-    q(`SELECT l.id, l.title, l.price, l.city, l.state, l.cat, l.photos[1] AS photo, l.created_at, u.id AS uid, u.name, u.show_activity
-         FROM listings l JOIN users u ON u.id = l.seller_id ORDER BY l.created_at DESC LIMIT 15`),
-    q(`SELECT id, title, city, state, cat, photos[1] AS photo, updated_at FROM listings WHERE status = 'sold' ORDER BY updated_at DESC LIMIT 10`),
+    q(`SELECT l.id, l.title, l.price, l.city, l.state, l.cat, l.store, l.photos[1] AS photo, l.created_at, u.id AS uid, u.name, u.show_activity
+         FROM listings l JOIN users u ON u.id = l.seller_id ORDER BY l.created_at DESC LIMIT 25`),
+    q(`SELECT id, title, city, state, cat, store, photos[1] AS photo, updated_at FROM listings WHERE status = 'sold' ORDER BY updated_at DESC LIMIT 15`),
   ]);
   const s = st.rows[0];
   const events = [
     ...joins.rows.map((u) => ({ type: "join", at: ms(u.created_at), userId: u.id, name: shortName(u.name), city: u.city, state: u.state })),
-    ...listed.rows.map((l) => ({ type: "listed", at: ms(l.created_at), listingId: l.id, title: l.title, price: l.price, cat: l.cat, photo: l.photo, city: l.city, state: l.state,
+    ...listed.rows.map((l) => ({ type: "listed", store: l.store, at: ms(l.created_at), listingId: l.id, title: l.title, price: l.price, cat: l.cat, photo: l.photo, city: l.city, state: l.state,
       ...(l.show_activity ? { userId: l.uid, name: shortName(l.name) } : { name: "A seller" }) })),
-    ...sold.rows.map((l) => ({ type: "sold", at: ms(l.updated_at), listingId: l.id, title: l.title, cat: l.cat, photo: l.photo, city: l.city, state: l.state })),
-  ].sort((a, b) => b.at - a.at).slice(0, 20);
-  const data = { stats: { members: s.members, newMembers: s.new_members, forSale: s.for_sale, sold: s.sold, cities: s.cities, states: s.states }, events };
+    ...sold.rows.map((l) => ({ type: "sold", store: l.store, at: ms(l.updated_at), listingId: l.id, title: l.title, cat: l.cat, photo: l.photo, city: l.city, state: l.state })),
+  ].sort((a, b) => b.at - a.at).slice(0, 30);
+  const data = { stats: { members: s.members, newMembers: s.new_members, forSale: s.for_sale, sold: s.sold, cities: s.cities, states: s.states,
+    byStore: { apple: { forSale: s.for_sale - s.ev_for_sale, sold: s.sold - s.ev_sold }, ev: { forSale: s.ev_for_sale, sold: s.ev_sold } } }, events };
   activityCache = { at: Date.now(), data };
   res.json(data);
 }));
@@ -369,13 +438,14 @@ app.get("/api/listings", wrap(async (req, res) => {
   const st = req.query.state && cleanState(req.query.state);
   if (st) { params.push(st); where.push(`l.state = $${params.length}`); }
   if (req.query.seller) { params.push(String(req.query.seller)); where.push(`l.seller_id = $${params.length}`); }
+  if (req.query.store === "ev" || req.query.store === "apple") { params.push(req.query.store); where.push(`l.store = $${params.length}`); }
   const r = await q(`${LISTING_SELECT} ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY l.created_at DESC LIMIT 1000`, params);
-  res.json(r.rows.map(listingOut));
+  res.json(r.rows.map((x) => listingOut(x, req.user)));
 }));
 app.get("/api/listings/:id", wrap(async (req, res) => {
   const r = await q(`${LISTING_SELECT} WHERE l.id = $1`, [req.params.id]);
   if (!r.rows[0]) throw new HttpError(404, "This listing was removed.");
-  res.json(listingOut(r.rows[0]));
+  res.json(listingOut(r.rows[0], req.user));
 }));
 app.get("/api/mine", wrap(async (req, res) => {
   const u = needUser(req);
@@ -383,7 +453,7 @@ app.get("/api/mine", wrap(async (req, res) => {
       (SELECT count(*) FROM threads t WHERE t.listing_id = l.id) AS thread_count,
       (SELECT count(*) FROM saved s WHERE s.listing_id = l.id) AS save_count`)}
     WHERE l.seller_id = $1 ORDER BY l.created_at DESC`, [u.id]);
-  res.json(r.rows.map(listingOut));
+  res.json(r.rows.map((x) => listingOut(x, req.user)));
 }));
 // counts of active listings per state and per city, for location browsing
 app.get("/api/locations", wrap(async (req, res) => {
@@ -407,9 +477,9 @@ app.post("/api/listings", wrap(async (req, res) => {
   const v = validateListing(req.body);
   const photos = await ownPhotos(u.id, v.photos);
   const id = newId("L");
-  await q(`INSERT INTO listings (id, seller_id, title, cat, storage, grade, battery, lock_off, price, city, state, descr, photos, checks)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-    [id, u.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.city, v.state, v.desc, photos, v.checks]);
+  await q(`INSERT INTO listings (id, seller_id, title, cat, storage, grade, battery, lock_off, price, city, state, descr, photos, checks, store, specs)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+    [id, u.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.city, v.state, v.desc, photos, v.checks, v.store, JSON.stringify(v.specs)]);
   // remember the seller's location for next time if they haven't set one
   if (!u.state) await q(`UPDATE users SET city=$2, state=$3 WHERE id=$1`, [u.id, v.city, v.state]);
   activityCache = null;
@@ -425,14 +495,14 @@ async function ownListing(u, id) {
 app.put("/api/listings/:id", wrap(async (req, res) => {
   const u = needUser(req);
   const old = await ownListing(u, req.params.id);
-  const v = validateListing(req.body);
+  const v = validateListing({ ...req.body, store: old.store }); // a listing stays in its store
   const photos = await ownPhotos(u.id, v.photos);
   // price drop tracking: remember the highest earlier price while the price stays below it
   const ref = old.orig_price ?? old.price;
   const origPrice = v.price < ref ? ref : null;
   await q(`UPDATE listings SET title=$2, cat=$3, storage=$4, grade=$5, battery=$6, lock_off=$7, price=$8, city=$9, state=$10, descr=$11, photos=$12,
-             orig_price=$13, checks=$14, updated_at=now() WHERE id=$1`,
-    [req.params.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.city, v.state, v.desc, photos, origPrice, v.checks]);
+             orig_price=$13, checks=$14, specs=$15, updated_at=now() WHERE id=$1`,
+    [req.params.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.city, v.state, v.desc, photos, origPrice, v.checks, JSON.stringify(v.specs)]);
   const dropped = old.photos.filter((p) => !photos.includes(p));
   if (dropped.length) await q(`DELETE FROM photos WHERE owner_id=$1 AND id = ANY($2)`, [u.id, dropped]);
   res.json({ ok: true });

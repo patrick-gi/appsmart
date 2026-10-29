@@ -23,8 +23,9 @@
   <div class="wrap bar">
     <a class="brand" href="#home" aria-label="Applesmart home">
       <span class="mark" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3"/><path d="M3.5 3.5v5.5H9"/></svg></span>
-      <b>Applesmart</b>
+      <b>Applesmart</b><i class="evbadge">EV</i>
     </a>
+    <nav class="storeswitch" aria-label="Store"><a href="#home" data-store="apple">Apple</a><a href="#ev" data-store="ev">Tesla</a></nav>
     <span class="pagelabel" id="pageLabel"></span>
     <button class="locbtn" id="locBtn" data-act="openLoc" aria-label="Change location"></button>
     <form class="search" id="searchForm" role="search">
@@ -46,8 +47,8 @@
 <footer class="foot-site">
   <div class="wrap footgrid">
     <div><b class="brandsm">Applesmart</b><p class="muted">Used Apple devices, checked before you meet. Local pickup in all 50 states and DC.</p></div>
-    <div><div class="eyebrow">Shop</div><a href="#shop?cat=iphone">iPhone</a><a href="#shop?cat=mac">Mac</a><a href="#shop?cat=ipad">iPad</a><a href="#shop?cat=watch">Apple Watch</a></div>
-    <div><div class="eyebrow">Sell</div><a href="#sell">List a device</a><a href="#mine">My listings</a><a href="#home" data-act="scrollTo" data-target="how">How it works</a></div>
+    <div><div class="eyebrow">Shop</div><a href="#shop?cat=iphone">iPhone</a><a href="#shop?cat=mac">Mac</a><a href="#shop?cat=ipad">iPad</a><a href="#shop?cat=watch">Apple Watch</a><a href="#ev">Teslas and Tesla gear</a></div>
+    <div><div class="eyebrow">Sell</div><a href="#sell">List an Apple device</a><a href="#sell?store=ev">List a Tesla or part</a><a href="#mine">My listings</a><a href="#home" data-act="scrollTo" data-target="how">How it works</a></div>
     <div><div class="eyebrow">Safety</div><p class="muted">Meet in a public place. Check the device turns on, shows its battery health, and is signed out of Find My before you pay.</p></div>
   </div>
   <div class="wrap footbar">
@@ -55,6 +56,7 @@
     <span class="support">Support: <a href="mailto:support@hinovaiq.io">support@hinovaiq.io</a></span>
     <span class="muted">© <span id="yr">2026</span> Hinovaiq</span>
   </div>
+  <p class="wrap disclaim">Applesmart is an independent marketplace for used devices and vehicles. It is not affiliated with, endorsed by or sponsored by Apple Inc. or Tesla, Inc. Product names are trademarks of their owners and are used only to describe items for sale.</p>
 </footer>
 
 <nav class="tabbar" aria-label="Mobile">
@@ -68,6 +70,7 @@
 <dialog id="dlg" aria-labelledby="dlgTitle"></dialog>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <script src="/us.js"></script>
+<script src="/ev.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
