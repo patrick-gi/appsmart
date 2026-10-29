@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js"
   },
-  "author": "",
+  "author": "Hinovaiq <support@hinovaiq.io>",
   "license": "UNLICENSED",
   "dependencies": {
     "express": "^4.21.2",

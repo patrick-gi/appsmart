@@ -1,5 +1,7 @@
 # Applesmart
 
+**A product of [Hinovaiq](mailto:support@hinovaiq.io).** Support: support@hinovaiq.io
+
 A marketplace for buying and selling used Apple devices with local pickup across the United States. Sellers list iPhones, iPads, Macs, Apple Watches and AirPods with photos, storage, condition, battery health, Activation Lock status and their city and state. Buyers browse by state and city, filter, message the seller and make offers. Payment happens in person at pickup.
 
 ## Features

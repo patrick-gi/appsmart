@@ -202,7 +202,7 @@ function viewHome(){
 
   <section class="section"><div class="wrap">
     <div class="sechead"><h2>Browse by state</h2>${popular.length?`<span class="muted">Most active: ${popular.map(s=>esc(STATES[s])).join(", ")}</span>`:""}</div>
-    <div class="states">${shownStates.map(c=>`<a class="statelink ${counts[c]?"":"empty"}" href="#shop?state=${c}"><span><span class="ab">${c}</span>${esc(STATES[c])}</span><span class="n">${counts[c]||0}</span></a>`).join("")}</div>
+    <div class="states">${shownStates.map(c=>`<a class="statelink ${counts[c]?"":"zero"}" href="#shop?state=${c}"><span><span class="ab">${c}</span>${esc(STATES[c])}</span><span class="n">${counts[c]||0}</span></a>`).join("")}</div>
     <div style="margin-top:12px"><button class="btn sm" data-act="allStates">${S.allStates?"Show fewer states":"Show all 50 states and DC"}</button></div>
   </div></section>
 
@@ -601,6 +601,7 @@ function viewMine(){
     <div class="tabs" role="tablist">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${S.mineTab===k}" data-act="mineTab" data-k="${k}">${n} <span class="mono muted">${by(k).length}</span></button>`).join("")}</div>
     ${S.mine==null?`<div class="rows"><p class="muted">Loading…</p></div>`: xs.length?`<div class="rows">${xs.map(rowHTML).join("")}</div>`
       : `<div class="empty" style="margin-bottom:50px"><h2>${S.mineTab==="active"?"Nothing for sale right now":S.mineTab==="reserved"?"Nothing reserved":"Nothing sold yet"}</h2><p class="muted">${S.mineTab==="active"?"List a device and it will show up for buyers in your state.":"Listings move here as buyers reserve and buy them."}</p>${S.mineTab==="active"?`<a class="btn primary" href="#sell">Sell a device</a>`:""}</div>`}
+    <div class="supportcard"><span>Questions, a problem with a buyer or seller, or feedback? Applesmart is a product of <b>Hinovaiq</b>.</span><a href="mailto:support@hinovaiq.io">support@hinovaiq.io</a></div>
   </div>`;
 }
 function viewSaved(){
@@ -637,7 +638,8 @@ function viewAccount(){
       <div class="field"><label>Email</label><input value="${esc(m.email||"")}" disabled></div>
       ${S.acctMsg?`<p class="${S.acctMsg.startsWith("Saved")?"muted":"err"}" role="status">${esc(S.acctMsg)}</p>`:""}
       <div class="actions"><button class="btn primary" type="submit" ${S.busy?"disabled":""}>Save changes</button><a class="btn ghost" href="#seller-${esc(m.id)}">View public profile</a><button class="btn ghost danger" type="button" data-act="logout" style="margin-left:auto">Sign out</button></div>
-    </form></div>`;
+    </form>
+    <div style="margin-top:16px"><div class="supportcard"><span>Questions, a problem with a buyer or seller, or feedback? Applesmart is a product of <b>Hinovaiq</b>.</span><a href="mailto:support@hinovaiq.io">support@hinovaiq.io</a></div></div></div>`;
 }
 
 /* ---------- views: inbox ---------- */
@@ -713,7 +715,7 @@ function paintChrome(){
   $("#who").innerHTML = S.me
     ? `<button class="avbtn" data-act="menu" aria-haspopup="true" aria-expanded="${S.menuOpen}" aria-label="Account menu">${avatar(S.me.id,S.me.name,36)}</button>
        ${S.menuOpen?`<div class="menu" role="menu"><div class="mhead"><b>${esc(S.me.name)}</b><div class="muted" style="font-size:13px">${esc(placeLabel(S.me.city,S.me.state)||S.me.email||"")}</div></div>
-         <a href="#mine" role="menuitem">My listings</a><a href="#saved" role="menuitem">Saved</a><a href="#inbox" role="menuitem">Messages</a><a href="#seller-${esc(S.me.id)}" role="menuitem">Public profile</a><a href="#account" role="menuitem">Account settings</a><button data-act="logout" role="menuitem">Sign out</button></div>`:""}`
+         <a href="#mine" role="menuitem">My listings</a><a href="#saved" role="menuitem">Saved</a><a href="#inbox" role="menuitem">Messages</a><a href="#seller-${esc(S.me.id)}" role="menuitem">Public profile</a><a href="#account" role="menuitem">Account settings</a><a href="mailto:support@hinovaiq.io" role="menuitem">Help &amp; support</a><button data-act="logout" role="menuitem">Sign out</button></div>`:""}`
     : `<a class="btn sm" href="#signin">Sign in</a>`;
   const tab = {chat:"inbox",thread:"inbox",home:"home",shop:"shop",item:"home",sell:"sell",edit:"sell",inbox:"inbox",mine:"mine",account:"mine",saved:"mine",signin:"mine",seller:"home"}[S.route];
   $$(".tabbar a").forEach(a=>a.classList.toggle("on", a.dataset.tab===tab));

@@ -146,8 +146,8 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .statelink:hover{border-color:var(--accent)}
 .statelink .ab{font-family:var(--mono);font-size:12px;color:var(--muted);margin-right:6px}
 .statelink .n{font-family:var(--mono);font-size:12px;background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:999px;font-weight:600}
-.statelink.empty{opacity:.6}
-.statelink.empty .n{background:var(--surface-2);color:var(--muted)}
+.statelink.zero{opacity:.6}
+.statelink.zero .n{background:var(--surface-2);color:var(--muted)}
 
 .steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;counter-reset:s}
 .step{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:8px}
@@ -656,4 +656,19 @@ body.signedout .nav .bell{display:none}
 @media (max-width:720px){
   .buybar{padding-bottom:28px}
   body:has(.buybar){padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}
+}
+
+/* Hinovaiq attribution */
+.footbar{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);margin-top:26px;padding-top:18px;font-size:13.5px}
+.footbar .byline{display:inline-flex;align-items:center;gap:8px}
+.hmark{width:22px;height:22px;border-radius:6px;background:var(--ink);color:var(--bg);display:inline-grid;place-items:center;font-weight:800;font-size:12px}
+.footbar a{color:var(--accent);font-weight:600;text-decoration:none}
+.footbar a:hover{text-decoration:underline}
+.supportcard{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--surface);border-radius:var(--r);box-shadow:var(--sh-1);padding:14px 16px;font-size:14px;margin-bottom:24px}
+.supportcard a{color:var(--accent);font-weight:600}
+@media (max-width:720px){
+  .foot-site{display:block;margin-top:24px;padding-block:6px 18px}
+  .foot-site .footgrid{display:none}
+  .footbar{flex-direction:column;align-items:flex-start;gap:6px;border-top:0;margin-top:0;padding-top:10px}
+  body.chatmode .foot-site{display:none}
 }
