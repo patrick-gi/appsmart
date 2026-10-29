@@ -1,0 +1,19 @@
+{
+  "name": "applesmart",
+  "version": "1.0.0",
+  "description": "Marketplace for buying and selling used Apple devices with local pickup",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "private": true
+}
