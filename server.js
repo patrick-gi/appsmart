@@ -114,6 +114,9 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS listings_state_city ON listings(state, city);
     -- v3: seller-confirmed checks (Face ID works, clean IMEI, original parts)
     ALTER TABLE listings ADD COLUMN IF NOT EXISTS checks TEXT[] NOT NULL DEFAULT '{}';
+    -- v5: members can hide themselves from the public community activity feed
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS show_activity BOOLEAN NOT NULL DEFAULT true;
+    CREATE INDEX IF NOT EXISTS users_created ON users(created_at DESC);
   `);
   await q(`DELETE FROM sessions WHERE expires_at < now()`);
 }
@@ -219,7 +222,7 @@ app.use(wrap(async (req, res, next) => {
   req.user = null;
   if (tok) {
     const r = await q(
-      `SELECT u.id, u.name, u.email, u.city, u.state, u.created_at FROM sessions s JOIN users u ON u.id = s.user_id
+      `SELECT u.id, u.name, u.email, u.city, u.state, u.show_activity, u.created_at FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.token_hash = $1 AND s.expires_at > now()`, [sha(tok)]);
     if (r.rows[0]) req.user = r.rows[0];
   }
@@ -237,7 +240,7 @@ app.use("/api", (req, res, next) => {
   next();
 });
 const needUser = (req) => { if (!req.user) throw new HttpError(401, "Sign in to do that."); return req.user; };
-const meOut = (u) => ({ id: u.id, name: u.name, email: u.email, city: u.city, state: u.state, createdAt: ms(u.created_at) });
+const meOut = (u) => ({ id: u.id, name: u.name, email: u.email, city: u.city, state: u.state, showActivity: u.show_activity !== false, createdAt: ms(u.created_at) });
 
 async function startSession(res, userId) {
   const tok = crypto.randomBytes(32).toString("base64url");
@@ -278,6 +281,7 @@ app.post("/api/auth/register", wrap(async (req, res) => {
     if (e.code === "23505") throw new HttpError(409, "An account with that email already exists. Sign in instead.");
     throw e;
   }
+  activityCache = null;
   await startSession(res, id);
   const r = await q(`SELECT * FROM users WHERE id=$1`, [id]);
   res.json(meOut(r.rows[0]));
@@ -306,7 +310,9 @@ app.put("/api/me", wrap(async (req, res) => {
   if (!name) throw new HttpError(400, "Enter your name as buyers will see it.");
   if (state === null) throw new HttpError(400, "Choose a US state from the list.");
   if (city === null) throw new HttpError(400, "Use letters only for the city.");
-  const r = await q(`UPDATE users SET name=$2, city=$3, state=$4 WHERE id=$1 RETURNING *`, [u.id, name, city, state]);
+  const showActivity = req.body.showActivity === undefined ? u.show_activity !== false : !!req.body.showActivity;
+  const r = await q(`UPDATE users SET name=$2, city=$3, state=$4, show_activity=$5 WHERE id=$1 RETURNING *`, [u.id, name, city, state, showActivity]);
+  activityCache = null;
   res.json(meOut(r.rows[0]));
 }));
 
@@ -317,6 +323,43 @@ app.get("/api/users/:id", wrap(async (req, res) => {
   if (!u) throw new HttpError(404, "That seller's account no longer exists.");
   const c = await q(`SELECT count(*) FILTER (WHERE status='active') active, count(*) FILTER (WHERE status='sold') sold FROM listings WHERE seller_id=$1`, [u.id]);
   res.json({ id: u.id, name: u.name, city: u.city, state: u.state, createdAt: ms(u.created_at), active: Number(c.rows[0].active), sold: Number(c.rows[0].sold) });
+}));
+
+/* community activity: real joins, new listings and sales, newest first */
+// "Samantha Rivera" -> "Samantha R." — never full surnames or emails in the public feed
+function shortName(n) {
+  const parts = String(n || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "A member";
+  return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.` : parts[0];
+}
+let activityCache = null; // {at, data} — the feed is the same for everyone, so cache it briefly
+app.get("/api/activity", wrap(async (req, res) => {
+  if (activityCache && Date.now() - activityCache.at < 15000) return res.json(activityCache.data);
+  const [st, joins, listed, sold] = await Promise.all([
+    q(`SELECT (SELECT count(*)::int FROM users) AS members,
+              (SELECT count(*)::int FROM users WHERE created_at > now() - interval '7 days') AS new_members,
+              (SELECT count(*)::int FROM listings WHERE status <> 'sold') AS for_sale,
+              (SELECT count(*)::int FROM listings WHERE status = 'sold') AS sold,
+              (SELECT count(DISTINCT state || '|' || lower(city))::int FROM (
+                 SELECT state, city FROM listings WHERE state <> '' AND city <> ''
+                 UNION SELECT state, city FROM users WHERE state <> '' AND city <> '') c) AS cities,
+              (SELECT count(DISTINCT state)::int FROM (
+                 SELECT state FROM listings WHERE state <> '' UNION SELECT state FROM users WHERE state <> '') s) AS states`),
+    q(`SELECT id, name, city, state, created_at FROM users WHERE show_activity ORDER BY created_at DESC LIMIT 15`),
+    q(`SELECT l.id, l.title, l.price, l.city, l.state, l.cat, l.photos[1] AS photo, l.created_at, u.id AS uid, u.name, u.show_activity
+         FROM listings l JOIN users u ON u.id = l.seller_id ORDER BY l.created_at DESC LIMIT 15`),
+    q(`SELECT id, title, city, state, cat, photos[1] AS photo, updated_at FROM listings WHERE status = 'sold' ORDER BY updated_at DESC LIMIT 10`),
+  ]);
+  const s = st.rows[0];
+  const events = [
+    ...joins.rows.map((u) => ({ type: "join", at: ms(u.created_at), userId: u.id, name: shortName(u.name), city: u.city, state: u.state })),
+    ...listed.rows.map((l) => ({ type: "listed", at: ms(l.created_at), listingId: l.id, title: l.title, price: l.price, cat: l.cat, photo: l.photo, city: l.city, state: l.state,
+      ...(l.show_activity ? { userId: l.uid, name: shortName(l.name) } : { name: "A seller" }) })),
+    ...sold.rows.map((l) => ({ type: "sold", at: ms(l.updated_at), listingId: l.id, title: l.title, cat: l.cat, photo: l.photo, city: l.city, state: l.state })),
+  ].sort((a, b) => b.at - a.at).slice(0, 20);
+  const data = { stats: { members: s.members, newMembers: s.new_members, forSale: s.for_sale, sold: s.sold, cities: s.cities, states: s.states }, events };
+  activityCache = { at: Date.now(), data };
+  res.json(data);
 }));
 
 /* listings */
@@ -369,6 +412,7 @@ app.post("/api/listings", wrap(async (req, res) => {
     [id, u.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.city, v.state, v.desc, photos, v.checks]);
   // remember the seller's location for next time if they haven't set one
   if (!u.state) await q(`UPDATE users SET city=$2, state=$3 WHERE id=$1`, [u.id, v.city, v.state]);
+  activityCache = null;
   res.status(201).json({ id });
 }));
 async function ownListing(u, id) {
@@ -400,6 +444,7 @@ app.patch("/api/listings/:id/status", wrap(async (req, res) => {
   if (!STATUSES.includes(s)) throw new HttpError(400, "Unknown status.");
   if (s === "active") await q(`UPDATE listings SET status='active', reserved_for=NULL, agreed_price=NULL, updated_at=now() WHERE id=$1`, [req.params.id]);
   else await q(`UPDATE listings SET status=$2, updated_at=now() WHERE id=$1`, [req.params.id, s]);
+  activityCache = null;
   res.json({ ok: true });
 }));
 app.delete("/api/listings/:id", wrap(async (req, res) => {

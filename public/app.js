@@ -61,7 +61,7 @@ const S = {
   f:{q:"", cat:"", grades:new Set(), min:"", max:"", batt:"", lockOnly:false, hideSold:true, sort:"new"},
   route:"home", param:"", activeThread:null, msgs:[], msgTid:null, photoIx:0,
   draft:null, draftErr:"", busy:false, uploading:0, railOpen:false, menuOpen:false, allStates:false,
-  mineTab:"active", sellers:{}, pending:[], msgDraft:{}, offerOpen:false, offerAmt:"", inboxTab:"all", threadsLoaded:false, authMode:"in", authErr:"", next:"", acctMsg:""
+  mineTab:"active", activity:null, seenEvents:null, sellers:{}, pending:[], msgDraft:{}, offerOpen:false, offerAmt:"", inboxTab:"all", threadsLoaded:false, authMode:"in", authErr:"", next:"", acctMsg:""
 };
 
 /* ---------- api ---------- */
@@ -149,6 +149,55 @@ const shortTitle = t => { const i=String(t||"").indexOf(","); return i>3 ? t.sli
 const placeName = (city, state) => city && state ? `${city}, ${STATES[state]||state}` : state ? STATES[state]||state : "";
 const skeletons = n => Array.from({length:n},()=>`<div class="card cardsk"><div class="ph"></div><div class="body"><div class="line" style="width:40%"></div><div class="line" style="width:85%"></div><div class="line" style="width:60%"></div></div></div>`).join("");
 
+/* ---------- community activity (real events only) ---------- */
+const nf = n => Number(n||0).toLocaleString("en-US");
+function eventHTML(e, fresh){
+  const place = e.city && e.state ? `${esc(e.city)}, ${esc(e.state)}` : e.state ? esc(STATES[e.state]||e.state) : "";
+  const who = e.userId ? `<a href="#seller-${esc(e.userId)}"><b>${esc(e.name)}</b></a>` : `<b>${esc(e.name||"A seller")}</b>`;
+  let icon, text;
+  if(e.type==="join"){
+    icon = e.userId ? avatar(e.userId, e.name, 38) : `<span class="evic">${I.plus}</span>`;
+    text = `${who} joined the community${place?` from ${place}`:""}`;
+  } else {
+    const th = `<span class="evthumb">${e.photo?`<img src="${esc(photoSrc(e.photo))}" alt="" loading="lazy">`:(ICON[e.cat]||ICON.other).replace('width="64" height="64"','width="22" height="22"')}</span>`;
+    icon = th;
+    const item = `<a href="#item-${esc(e.listingId)}"><b>${esc(shortTitle(e.title))}</b></a>`;
+    text = e.type==="listed" ? `${who} listed ${item}${place?` in ${place}`:""}<span class="evprice">${money(e.price)}</span>`
+         : `${item} <span class="evsold">sold</span>${place?` in ${place}`:""}`;
+  }
+  return `<li class="ev ${fresh?"fresh":""} ev-${e.type}">${icon}<span class="evtx">${text}</span><time class="muted">${ago(e.at)}</time></li>`;
+}
+function communityHTML(){
+  const a=S.activity;
+  if(!a) return `<section class="section"><div class="wrap"><div class="community"><div class="cstats">${[1,2,3,4].map(()=>`<div class="cstat cardsk"><div class="line" style="width:50%"></div><div class="line" style="width:70%"></div></div>`).join("")}</div><div class="feed"><p class="muted">Loading community activity…</p></div></div></div></section>`;
+  const s=a.stats;
+  const key = e => e.type+":"+(e.userId||"")+":"+(e.listingId||"")+":"+e.at;
+  const seen = S.seenEvents;
+  const feed = a.events.length ? `<ul class="evlist">${a.events.slice(0,8).map(e=>eventHTML(e, seen && !seen.has(key(e)))).join("")}</ul>`
+    : `<div class="feedempty"><b>The community is just getting started</b><p class="muted">Be one of the first members. New members, listings and sales will show up here as they happen.</p>${S.me?`<a class="btn primary sm" href="#sell">List a device</a>`:`<a class="btn primary sm" href="#signin" data-act="joinNow">Join Applesmart</a>`}</div>`;
+  return `<section class="section" id="community"><div class="wrap">
+    <div class="sechead"><div><h2>Community activity</h2><p class="muted" style="margin-top:4px">Real members, real listings, as they happen.</p></div>${S.me?"":`<a class="btn primary sm" href="#signin" data-act="joinNow">Join the community</a>`}</div>
+    <div class="community">
+      <div class="cstats">
+        <div class="cstat"><b>${nf(s.members)}</b><span>${s.members===1?"member":"members"}</span>${s.newMembers?`<em>+${nf(s.newMembers)} this week</em>`:""}</div>
+        <div class="cstat"><b>${nf(s.forSale)}</b><span>${s.forSale===1?"device":"devices"} for sale</span></div>
+        <div class="cstat"><b>${nf(s.sold)}</b><span>sold</span></div>
+        <div class="cstat"><b>${nf(s.cities)}</b><span>${s.cities===1?"city":"cities"}${s.states?` in ${nf(s.states)} ${s.states===1?"state":"states"}`:""}</span></div>
+      </div>
+      <div class="feed"><div class="feedhead"><span class="live"><i></i>Live</span><span class="muted">Updated ${a.fetchedAt?ago(a.fetchedAt):"just now"}</span></div>${feed}</div>
+    </div></div></section>`;
+}
+async function loadActivity(){
+  try{
+    const a = await api("GET","/api/activity"); a.fetchedAt=Date.now();
+    const key = e => e.type+":"+(e.userId||"")+":"+(e.listingId||"")+":"+e.at;
+    if(S.activity) S.seenEvents = new Set(S.activity.events.map(key));
+    const changed = !S.activity || JSON.stringify(a.events)!==JSON.stringify(S.activity.events) || JSON.stringify(a.stats)!==JSON.stringify(S.activity.stats);
+    S.activity = a;
+    if(changed && S.route==="home") render(true);
+  }catch(e){}
+}
+
 /* ---------- views: home ---------- */
 function viewHome(){
   const live = S.listings.filter(active);
@@ -175,6 +224,7 @@ function viewHome(){
         <span class="muted" style="font-size:13.5px">Popular:</span>
         ${["iPhone 15","MacBook Air","AirPods Pro","iPad Air"].map(s=>`<a class="chip" href="#shop?q=${encodeURIComponent(s)}${S.loc.state?"&state="+S.loc.state:""}">${s}</a>`).join("")}
       </div>
+      ${S.activity && S.activity.stats.members ? `<a class="proof" href="#community" data-act="scrollTo" data-target="community"><span class="faces">${S.activity.events.filter(e=>e.type==="join"&&e.userId).slice(0,4).map(e=>avatar(e.userId,e.name,28)).join("")}</span><span><b>${nf(S.activity.stats.members)} ${S.activity.stats.members===1?"member":"members"}</b>${S.activity.stats.newMembers?` · ${nf(S.activity.stats.newMembers)} joined this week`:""}</span></a>` : ""}
     </div>
     <div class="trust" aria-hidden="true">
       <div class="thead"><span class="eyebrow">What every listing shows</span><span class="pill ok">Checked</span></div>
@@ -188,6 +238,8 @@ function viewHome(){
       </ul>
     </div>
   </div></section>
+
+  ${communityHTML()}
 
   <section class="section"><div class="wrap">
     <div class="sechead"><h2>Shop by device</h2><span class="muted">${esc(locLabel())}</span></div>
@@ -635,6 +687,7 @@ function viewAccount(){
         <div class="field"><label for="accCity">City</label><input id="accCity" list="accCities" maxlength="40" value="${esc(m.city)}" autocomplete="address-level2">${m.state?cityList("accCities",m.state):""}</div>
       </div>
       <span class="hint muted" style="font-size:13px">Your location fills in new listings and sets what you see first when you browse.</span>
+      <label class="check"><input type="checkbox" id="accActivity" ${m.showActivity!==false?"checked":""}> Show my first name and city in the community activity feed when I join or list a device</label>
       <div class="field"><label>Email</label><input value="${esc(m.email||"")}" disabled></div>
       ${S.acctMsg?`<p class="${S.acctMsg.startsWith("Saved")?"muted":"err"}" role="status">${esc(S.acctMsg)}</p>`:""}
       <div class="actions"><button class="btn primary" type="submit" ${S.busy?"disabled":""}>Save changes</button><a class="btn ghost" href="#seller-${esc(m.id)}">View public profile</a><button class="btn ghost danger" type="button" data-act="logout" style="margin-left:auto">Sign out</button></div>
@@ -772,6 +825,7 @@ async function loadMsgs(){
 function wantMsgs(tid){ if(S.msgTid===tid) return; S.msgTid=tid; S.msgs=[]; setTimeout(loadMsgs,0); }
 function every(ms, fn){ setInterval(()=>{ if(!document.hidden) fn(); }, ms); }
 every(30000, loadListings);
+every(20000, ()=>{ if(S.route==="home") loadActivity(); });
 every(5000, loadThreads);
 every(3000, ()=>{ if(["chat","thread","inbox"].includes(S.route)) loadMsgs(); });
 matchMedia("(max-width:720px)").addEventListener("change", ()=>render(true));
@@ -834,7 +888,7 @@ async function saveListing(){
     if(isNew) id=(await api("POST","/api/listings",body)).id; else await api("PUT",`/api/listings/${encodeURIComponent(id)}`,body);
     S.busy=false; S.draft=null; if(isNew) lsSet("as_draft",null);
     if(S.me && !S.me.state){ S.me.state=body.state; S.me.city=body.city; }
-    await loadListings(); loadMine(); toast(isNew?"Your listing is live":"Listing updated"); location.hash="item-"+id;
+    await loadListings(); loadMine(); loadActivity(); toast(isNew?"Your listing is live":"Listing updated"); location.hash="item-"+id;
   }catch(e){ S.busy=false; S.draftErr=e.message; if(e.status===401) goSignIn(); render(); }
 }
 async function setStatus(id, s){
@@ -860,6 +914,7 @@ document.addEventListener("click", async e => {
     case "focusSearch": setTimeout(()=>{ const q=$("#q"); if(q) q.focus(); },80); break;
     case "closeDlg": closeDialog(); break;
     case "useMyLoc": setLoc(S.me.state,S.me.city); closeDialog(); afterLocChange(); break;
+    case "joinNow": S.authMode="up"; break;
     case "allStates": S.allStates=!S.allStates; render(true); break;
     case "scrollTo": e.preventDefault(); if(S.route!=="home") location.hash="home"; setTimeout(()=>{ const el=document.getElementById(t.dataset.target); el&&el.scrollIntoView({behavior:"smooth"}); },60); break;
     case "cat": f.cat=t.dataset.k; shopChanged(); break;
@@ -912,7 +967,7 @@ document.addEventListener("submit", async e => {
   if(kind==="report"){ const reason=(form.querySelector("input[name=reason]:checked")||{}).value; try{ await api("POST",`/api/listings/${encodeURIComponent(form.dataset.id)}/report`,{reason,note:$("#repNote").value}); closeDialog(); toast("Thanks. We'll review this listing."); }catch(err){ closeDialog(); fail(err); } return; }
   if(kind==="account"){
     S.busy=true; S.acctMsg=""; render();
-    try{ S.me=await api("PUT","/api/me",{name:$("#accName").value,state:$("#accState").value,city:$("#accCity").value}); S.busy=false; S.acctMsg="Saved."; if(S.me.state) setLoc(S.me.state,S.me.city); toast("Profile saved"); }
+    try{ S.me=await api("PUT","/api/me",{name:$("#accName").value,state:$("#accState").value,city:$("#accCity").value,showActivity:$("#accActivity").checked}); loadActivity(); S.busy=false; S.acctMsg="Saved."; if(S.me.state) setLoc(S.me.state,S.me.city); toast("Profile saved"); }
     catch(err){ S.busy=false; S.acctMsg=err.message; } render(); return;
   }
   if(kind==="auth"){
@@ -921,7 +976,7 @@ document.addEventListener("submit", async e => {
     S.busy=true; S.authErr=""; render();
     try{ S.me=await api("POST", up?"/api/auth/register":"/api/auth/login", body); S.busy=false; toast(up?"Welcome to Applesmart":"Signed in");
       if(S.me.state && !S.loc.state) setLoc(S.me.state,S.me.city);
-      loadThreads(); loadSaved(); loadMine(); location.hash = S.next && S.next!=="signin" ? S.next : "home"; render(); }
+      loadThreads(); loadSaved(); loadMine(); loadActivity(); location.hash = S.next && S.next!=="signin" ? S.next : "home"; render(); }
     catch(err){ S.busy=false; S.authErr=err.message; render(); }
     return;
   }
@@ -1009,6 +1064,7 @@ $("#dlg").addEventListener("click", e => { if(e.target.id==="dlg") closeDialog()
   try{ S.me = await api("GET","/api/me"); }catch(e){}
   if(S.me && S.me.state && !lsGet("as_loc",null)) setLoc(S.me.state, S.me.city);
   route();
+  loadActivity();
   await loadListings();
   if(S.me){ loadThreads(); loadSaved(); loadMine(); }
 })();

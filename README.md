@@ -6,6 +6,7 @@ A marketplace for buying and selling used Apple devices with local pickup across
 
 ## Features
 
+- **Community activity** (home page): live feed of real members joining, devices listed and devices sold, plus member / for-sale / sold / city counts. Members appear by first name and last initial only; anyone can opt out in Account settings
 - **US locations**: every listing has a state (all 50 + DC) and city; shoppers pick a location, browse state and city pages (`#shop?state=AZ&city=Phoenix`), and see city chips with counts
 - **Listing upload**: device tabs, photo slots (drag-and-drop or paste up to 8, reorder, first is primary), model suggestions, storage selector, battery capacity with status, Grade A/B/C cards, Activation Lock plus seller-confirmed checks (Face ID, clean IMEI, original parts), big price field with a market estimate from real listings, single "City, State" pickup field, live buyer-card preview; draft autosaves
 - **Shop**: search, device type, condition, price range, minimum battery health, Activation Lock filter, sorting, shareable filter links
@@ -47,10 +48,11 @@ DATABASE_URL=postgres://localhost/applesmart npm start
 | POST | `/api/auth/login` / `/api/auth/logout` | Sign in or out |
 | GET | `/api/me` | The signed-in user, or `null` |
 | GET | `/api/listings` | All listings, newest first (`?state=AZ` to filter) |
+| GET | `/api/activity` | Community stats and the 20 latest real events (joins, listings, sales); cached 15 s |
 | GET | `/api/locations` | Active listing counts by state and city |
 | GET | `/api/mine` | Your listings with view, chat and save counts |
 | GET | `/api/users/:id` | Public seller profile |
-| PUT | `/api/me` | Update name, city and state |
+| PUT | `/api/me` | Update name, city, state and community-feed visibility |
 | POST | `/api/listings/:id/view` | Count a view |
 | POST | `/api/listings/:id/report` | Report a listing |
 | POST / PUT / DELETE | `/api/listings/:id` | Create, edit or delete (seller only) |

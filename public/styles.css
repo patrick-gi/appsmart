@@ -672,3 +672,40 @@ body.signedout .nav .bell{display:none}
   .footbar{flex-direction:column;align-items:flex-start;gap:6px;border-top:0;margin-top:0;padding-top:10px}
   body.chatmode .foot-site{display:none}
 }
+
+/* =================== v5: community activity =================== */
+.proof{display:inline-flex;align-items:center;gap:10px;margin-top:18px;text-decoration:none;font-size:14px;color:var(--muted)}
+.proof b{color:var(--ink)}
+.proof .faces{display:inline-flex}
+.proof .faces .avatar{border:2px solid var(--bg);margin-left:-8px}
+.proof .faces .avatar:first-child{margin-left:0}
+.community{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.4fr);gap:18px;align-items:start}
+.cstats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.cstat{background:var(--surface);border-radius:var(--r);box-shadow:var(--sh-1);padding:18px;display:flex;flex-direction:column;gap:2px;min-height:108px}
+.cstat b{font-size:clamp(26px,3vw,34px);font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1.1}
+.cstat span{color:var(--muted);font-size:14px}
+.cstat em{font-style:normal;margin-top:auto;align-self:flex-start;background:var(--mint);color:var(--mint-ink);font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px}
+.cstat.cardsk .line{height:14px;border-radius:7px;background:var(--surface-2);margin-top:8px}
+.feed{background:var(--surface);border-radius:var(--r);box-shadow:var(--sh-1);padding:8px 6px 6px}
+.feedhead{display:flex;justify-content:space-between;align-items:center;padding:6px 12px 8px;font-size:12.5px}
+.feedhead .live i{animation:pulse 1.6s ease-in-out infinite}
+.evlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.ev{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;font-size:14.5px;line-height:1.4}
+.ev+.ev{border-top:1px solid var(--line)}
+.ev .evtx{flex:1;min-width:0}
+.ev .evtx a{text-decoration:none}
+.ev .evtx a:hover b{text-decoration:underline}
+.ev time{font-size:12.5px;white-space:nowrap;flex:none}
+.evthumb,.evic{width:38px;height:38px;border-radius:10px;overflow:hidden;background:var(--fill);display:grid;place-items:center;color:var(--muted);flex:none}
+.evthumb img{width:100%;height:100%;object-fit:cover}
+.evic svg{width:18px;height:18px}
+.evprice{margin-left:8px;font-weight:800;font-size:12.5px;background:var(--tag);color:var(--tag-ink);padding:1px 7px;border-radius:6px;white-space:nowrap}
+.evsold{font-weight:700;color:var(--ok)}
+.ev.fresh{animation:evin .9s ease-out}
+@keyframes evin{from{background:var(--mint);transform:translateY(-4px)}to{background:transparent;transform:none}}
+.feedempty{padding:22px 16px 18px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+@media (max-width:900px){ .community{grid-template-columns:1fr} }
+@media (max-width:720px){
+  .cstat{min-height:0;padding:14px}
+  .ev{padding:10px 8px;gap:10px;font-size:14px}
+}
