@@ -569,3 +569,91 @@ dialog::backdrop{background:rgba(10,12,16,.45);backdrop-filter:blur(3px)}
   .slots{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 @media (max-width:900px){ .sgrid{grid-template-columns:1fr} .side3{position:static} }
+
+/* =================== v4: messaging =================== */
+.cta{display:flex;gap:10px;flex-wrap:wrap}
+.cta .btn{flex:1 1 180px}
+.cta .btn svg{width:18px;height:18px}
+.lastmsg{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:12px;background:var(--surface);box-shadow:var(--sh-1);text-decoration:none;font-size:14px}
+.lastmsg span:not(.unreaddot):not(.muted){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lastmsg .muted{font-size:12.5px;flex:none}
+.sellerthreads{display:flex;flex-direction:column;gap:8px}
+.buybar{display:none}
+
+.inbox{grid-template-columns:340px minmax(0,1fr)}
+.th-i{text-decoration:none;color:inherit}
+.th-i .r1{display:flex;justify-content:space-between;gap:8px}
+.th-i .r1 .muted{font-size:12px;flex:none}
+.th-i .r2{font-size:13px}
+.th-i .r3{font-size:13px;color:var(--muted)}
+.th-i .r3.un{color:var(--ink);font-weight:700}
+
+.chatwrap{max-width:760px;padding-block:18px 30px}
+.convo{display:flex;flex-direction:column;background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--sh-1);overflow:hidden;height:min(760px,calc(100vh - 130px));min-height:460px}
+.convo.embedded{height:min(720px,calc(100vh - 210px))}
+.convhead{display:flex;align-items:center;gap:6px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.convhead .person{display:flex;align-items:center;gap:10px;text-decoration:none;min-width:0}
+.convhead .person>span{display:flex;flex-direction:column;min-width:0}
+.convhead .person b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.convlisting{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--fill);text-decoration:none;font-size:14px}
+.convlisting .tthumb{width:44px;height:44px;border-radius:10px;overflow:hidden;background:var(--surface);flex:none;display:grid;place-items:center;color:var(--muted)}
+.convlisting .tthumb img{width:100%;height:100%;object-fit:cover}
+.convlisting .tthumb svg{width:26px;height:26px}
+.convlisting .grow{flex:1;min-width:0;display:flex;flex-direction:column}
+.convlisting .grow b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.convlisting .status{font-size:10px;padding:2px 7px}
+.msgs2{flex:1;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:6px;background:var(--bg)}
+.daysep{display:flex;justify-content:center;margin:8px 0}
+.daysep span{font-size:11.5px;font-weight:600;color:var(--muted);background:var(--surface);padding:3px 10px;border-radius:999px;box-shadow:var(--sh-1)}
+.bub{max-width:78%;align-self:flex-start;background:var(--surface);border-radius:18px 18px 18px 6px;padding:9px 13px 6px;box-shadow:var(--sh-1);display:flex;flex-direction:column;gap:2px;overflow-wrap:anywhere}
+.bub.me{align-self:flex-end;background:var(--accent);color:var(--accent-ink);border-radius:18px 18px 6px 18px}
+.bub .tx{white-space:pre-wrap;line-height:1.45}
+.bub .bt{font-size:10.5px;opacity:.7;align-self:flex-end}
+.bub.pending{opacity:.65}
+.bub.sys{align-self:center;flex-direction:row;align-items:center;gap:6px;background:var(--mint);color:var(--mint-ink);border:1px solid var(--mint-line);border-radius:999px;font-size:13px;font-weight:600;padding:6px 12px;max-width:92%;box-shadow:none}
+.bub.isoffer{background:var(--surface);color:var(--ink);border:2px solid var(--tag);padding:10px 14px 6px}
+.offerbub{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
+.offerbub b{font-size:24px;font-weight:800;letter-spacing:-.02em}
+.offerbub .muted{font-size:12.5px}
+.offerbub .btn{margin-top:8px}
+.convempty{margin:auto;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;max-width:34ch;padding:20px 0}
+.convempty p{font-size:14px}
+.convfoot{border-top:1px solid var(--line);background:var(--surface);padding-bottom:env(safe-area-inset-bottom,0px)}
+.convfoot .quickq{display:flex;gap:6px;overflow-x:auto;padding:10px 12px 0;scrollbar-width:none;flex-wrap:nowrap}
+.convfoot .quickq::-webkit-scrollbar{display:none}
+.convfoot .quickq .chip{flex:none;background:var(--mint);border-color:var(--mint-line);color:var(--mint-ink);font-weight:600}
+.composer{display:flex;align-items:flex-end;gap:8px;padding:10px 12px}
+.composer textarea{flex:1;min-width:0;resize:none;border:1.5px solid transparent;background:var(--fill);border-radius:20px;padding:10px 14px;line-height:1.4;max-height:140px;font-size:15px}
+.composer textarea:focus{outline:none;border-color:var(--accent);background:var(--surface)}
+.sendbtn{width:42px;height:42px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;cursor:pointer;flex:none}
+.sendbtn:hover{background:var(--accent-hover)}
+.offerbtn{flex:none;height:42px}
+.offerpanel{margin:10px 12px 0;padding:12px;border-radius:14px;background:var(--fill);display:flex;flex-direction:column;gap:10px}
+.op-h{display:flex;justify-content:space-between;align-items:center}
+.iconbtn.sm{width:30px;height:30px;font-size:18px}
+.op-presets{display:flex;gap:6px;flex-wrap:wrap}
+.op-row{display:flex;gap:8px}
+.op-row .bigprice{flex:1}
+.bigprice.sm span{font-size:18px;left:14px}
+.bigprice.sm input{font-size:20px;padding:10px 12px 10px 32px;background:var(--surface)}
+.closed{padding:14px;text-align:center;color:var(--muted);font-size:14px}
+
+@media (max-width:720px){
+  .buybar{display:flex;gap:8px;position:fixed;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom,0px));z-index:24;padding:10px max(14px,env(safe-area-inset-right,0px)) 10px max(14px,env(safe-area-inset-left,0px));background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -6px 20px -12px rgba(0,0,0,.25)}
+  .buybar .btn{flex:1}
+  .buybar .btn:first-child{flex:1.4}
+  body:has(.buybar){padding-bottom:calc(132px + env(safe-area-inset-bottom,0px))}
+  .inbox{grid-template-columns:1fr}
+  body.chatmode{padding-bottom:0}
+  body.chatmode .tabbar,body.chatmode .foot-site{display:none}
+  body.chatmode main{display:flex}
+  body.chatmode .chatwrap{padding:0;max-width:none;width:100%}
+  body.chatmode .convo{border-radius:0;box-shadow:none;height:calc(100dvh - 61px - env(safe-area-inset-top,0px));min-height:0;width:100%}
+  .bub{max-width:85%}
+}
+.pagelabel:empty{display:none!important}
+body.signedout .nav .bell{display:none}
+@media (max-width:720px){
+  .buybar{padding-bottom:28px}
+  body:has(.buybar){padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}
+}

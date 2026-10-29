@@ -246,6 +246,8 @@ async function startSession(res, userId) {
   res.setHeader("Set-Cookie", `as_session=${tok}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 86400}${secure}`);
 }
 
+// sign-in/sign-up attempts per IP per 10 minutes (raise only for automated tests)
+const AUTH_MAX = Number(process.env.AUTH_RATE_LIMIT) || 10;
 // naive per-IP limiter
 const hits = new Map();
 function limit(req, key, max = 10, windowMs = 10 * 60e3) {
@@ -258,7 +260,7 @@ setInterval(() => { const now = Date.now(); for (const [k, v] of hits) if (!v.so
 
 /* auth */
 app.post("/api/auth/register", wrap(async (req, res) => {
-  limit(req, "auth");
+  limit(req, "auth", AUTH_MAX);
   const email = str(req.body.email, 200).toLowerCase();
   const name = str(req.body.name, 40);
   const pw = String(req.body.password || "");
@@ -281,7 +283,7 @@ app.post("/api/auth/register", wrap(async (req, res) => {
   res.json(meOut(r.rows[0]));
 }));
 app.post("/api/auth/login", wrap(async (req, res) => {
-  limit(req, "auth");
+  limit(req, "auth", AUTH_MAX);
   const email = str(req.body.email, 200).toLowerCase();
   const r = await q(`SELECT * FROM users WHERE email = $1`, [email]);
   const u = r.rows[0];
@@ -468,19 +470,22 @@ app.get("/api/threads", wrap(async (req, res) => {
   const u = needUser(req);
   const r = await q(`
     SELECT t.*, l.title AS listing_title, l.photos[1] AS listing_photo, l.price AS listing_price, l.status AS listing_status,
-           b.name AS buyer_name, s.name AS seller_name, tr.read_at
+           b.name AS buyer_name, s.name AS seller_name, tr.read_at, tro.read_at AS other_read_at,
+           l.city AS listing_city, l.state AS listing_state
     FROM threads t
     JOIN listings l ON l.id = t.listing_id
     JOIN users b ON b.id = t.buyer_id
     JOIN users s ON s.id = t.seller_id
     LEFT JOIN thread_reads tr ON tr.thread_id = t.id AND tr.user_id = $1
+    LEFT JOIN thread_reads tro ON tro.thread_id = t.id AND tro.user_id = CASE WHEN t.buyer_id = $1 THEN t.seller_id ELSE t.buyer_id END
     WHERE t.buyer_id = $1 OR t.seller_id = $1
     ORDER BY t.updated_at DESC`, [u.id]);
   res.json(r.rows.map((t) => ({
     id: t.id, listingId: t.listing_id, listingTitle: t.listing_title, listingPhoto: t.listing_photo,
     listingPrice: t.listing_price, listingStatus: t.listing_status,
     sellerId: t.seller_id, sellerName: t.seller_name, buyerId: t.buyer_id, buyerName: t.buyer_name,
-    last: t.last, lastFrom: t.last_from, updatedAt: ms(t.updated_at),
+    last: t.last, lastFrom: t.last_from, updatedAt: ms(t.updated_at), otherReadAt: ms(t.other_read_at),
+    listingCity: t.listing_city, listingState: t.listing_state,
     unread: !!t.last_from && t.last_from !== u.id && (!t.read_at || t.read_at < t.updated_at),
   })));
 }));

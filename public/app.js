@@ -61,7 +61,7 @@ const S = {
   f:{q:"", cat:"", grades:new Set(), min:"", max:"", batt:"", lockOnly:false, hideSold:true, sort:"new"},
   route:"home", param:"", activeThread:null, msgs:[], msgTid:null, photoIx:0,
   draft:null, draftErr:"", busy:false, uploading:0, railOpen:false, menuOpen:false, allStates:false,
-  mineTab:"active", sellers:{}, authMode:"in", authErr:"", next:"", acctMsg:""
+  mineTab:"active", sellers:{}, pending:[], msgDraft:{}, offerOpen:false, offerAmt:"", inboxTab:"all", threadsLoaded:false, authMode:"in", authErr:"", next:"", acctMsg:""
 };
 
 /* ---------- api ---------- */
@@ -295,30 +295,94 @@ function sheetHTML(l){
     </dl></div>`;
 }
 function buyerThread(l){ return S.threads.find(t=>t.listingId===l.id && isMe(t.buyerId)) || {id:null, listingId:l.id, sellerId:l.sellerId, sellerName:l.sellerName, buyerId:S.me.id, fresh:true}; }
-function chatHTML(t, l, opts={}){
-  const seller = isMe(t.sellerId);
-  const otherId = seller? t.buyerId : t.sellerId, otherName = seller? t.buyerName : t.sellerName;
-  const ms = t.id && S.msgTid===t.id ? S.msgs : [];
-  const items = ms.map(m => {
-    const mine = isMe(m.from);
-    if(m.kind==="sys") return `<div class="msg sys">${esc(m.text)}</div>`;
-    if(m.kind==="offer"){
-      const canAccept = seller && !mine && l && l.status==="active";
-      return `<div class="msg offer" style="align-self:${mine?"flex-end":"flex-start"}"><div class="eyebrow">${mine?"Your offer":"Offer"}</div><b>${money(m.amount)}</b>${canAccept?`<div class="actions" style="margin-top:8px"><button class="btn primary sm" data-act="accept" data-amt="${Number(m.amount)}">Accept and reserve</button></div>`:""}<div class="t">${ago(m.at)}</div></div>`;
-    }
-    return `<div class="msg ${mine?"me":""}">${esc(m.text)}<div class="t">${ago(m.at)}</div></div>`;
-  }).join("");
-  const empty = !ms.length ? `<p class="muted" style="margin:auto;text-align:center;font-size:14px;max-width:34ch">${seller?"No messages yet.":"Ask a question or make an offer. Agree on a public meetup spot before you go."}</p>` : "";
-  const open = l && l.status!=="sold";
-  return `<div class="chat">
-    <div class="hd"><div class="person">${avatar(otherId, otherName, 32)}<div><b>${esc(showName(otherId, otherName))}</b><div class="role">${seller?"Buyer":"Seller"}</div></div></div>${opts.link&&l?`<a class="btn sm" href="#item-${esc(l.id)}">View listing</a>`:""}</div>
-    <div class="msgs" id="msgs">${items}${empty}</div>
-    ${open?`${!seller && l.status==="active"?`<div class="quickq">${["Is this still available?","Can I see it working before paying?","When could you meet?"].map(q=>`<button class="chip" data-act="quick" data-text="${esc(q)}">${esc(q)}</button>`).join("")}</div>`:""}
-    <form class="compose" data-form="msg"><input id="msgText" placeholder="Write a message" autocomplete="off" aria-label="Message" maxlength="1000"><button class="btn primary" type="submit">Send</button></form>
-    ${!seller && l.status==="active"?`<form class="offerrow" data-form="offer"><label for="offerAmt" class="muted" style="font-size:13.5px">Make an offer</label><div class="prefix"><span>$</span><input id="offerAmt" type="number" min="1" step="5" inputmode="numeric" value="${Math.round(l.price*0.9/5)*5}"></div><button class="btn sm" type="submit">Send offer</button></form>`:""}`
-    : `<p class="muted" style="padding:12px 16px;margin:0;font-size:13.5px">${l?"This device has sold.":"This listing was removed."}</p>`}
-  </div>`;
+const isPhone = () => matchMedia("(max-width:720px)").matches;
+const clock = t => new Date(t).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+function dayLabel(t){
+  const d=new Date(t), now=new Date(), y=new Date(now); y.setDate(now.getDate()-1);
+  if(d.toDateString()===now.toDateString()) return "Today";
+  if(d.toDateString()===y.toDateString()) return "Yesterday";
+  return d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
 }
+const QUICK = ["Hi! Is this still available?","Can I see it working before I pay?","Is the price negotiable?","When and where could we meet?"];
+// One conversation: listing header, messages, composer. Used full-screen (chat/thread routes) and in the desktop inbox.
+function convoHTML(t, l, opts={}){
+  const seller = isMe(t.sellerId);
+  const otherId = seller ? t.buyerId : t.sellerId, otherName = seller ? t.buyerName : t.sellerName;
+  const ms = (t.id && S.msgTid===t.id ? S.msgs : []).concat(S.pending.filter(p=>p.tid===(t.id||"new:"+t.listingId)));
+  const lid = l ? l.id : t.listingId, title = l ? l.title : t.listingTitle, price = l ? l.price : t.listingPrice, status = l ? l.status : t.listingStatus;
+  const photo = l ? (l.photos||[])[0] : t.listingPhoto;
+  const open = !!l && status!=="sold";
+  let lastDay="", lastMineIdx=-1;
+  ms.forEach((m,i)=>{ if(isMe(m.from) && m.kind!=="sys") lastMineIdx=i; });
+  const items = ms.map((m,i)=>{
+    let out="";
+    const dl=dayLabel(m.at); if(dl!==lastDay){ lastDay=dl; out+=`<div class="daysep"><span>${dl}</span></div>`; }
+    const mine=isMe(m.from);
+    if(m.kind==="sys") return out+`<div class="bub sys">${I.check}<span>${esc(m.text)}</span></div>`;
+    let body;
+    if(m.kind==="offer"){
+      const canAccept = seller && !mine && status==="active" && !m.pending;
+      body = `<div class="offerbub"><span class="eyebrow">${mine?"You offered":"Offer"}</span><b>${money(m.amount)}</b>${price?`<span class="muted">Asking ${money(price)}</span>`:""}${canAccept?`<button class="btn primary sm" data-act="accept" data-amt="${Number(m.amount)}">Accept &amp; reserve</button>`:""}</div>`;
+    } else body = `<span class="tx">${esc(m.text)}</span>`;
+    const seen = mine && i===lastMineIdx && !m.pending && t.otherReadAt && t.otherReadAt>=m.at;
+    const meta = m.pending ? "Sending…" : clock(m.at) + (seen ? " · Seen" : "");
+    return out+`<div class="bub ${mine?"me":""} ${m.kind==="offer"?"isoffer":""} ${m.pending?"pending":""}">${body}<span class="bt">${meta}</span></div>`;
+  }).join("");
+  const empty = !ms.length ? `<div class="convempty">${avatar(otherId, otherName, 52)}<b>${seller?"No messages yet":`Ask ${esc(otherName||"the seller")} about this ${esc(catOf(l?l.cat:"").n)}`}</b><p class="muted">${seller?"":"Questions about condition, battery or pickup are a good start. Keep payment and meetup in person."}</p></div>` : "";
+  const quick = open && !seller && !ms.length ? `<div class="quickq">${QUICK.map(q=>`<button type="button" class="chip" data-act="quick" data-text="${esc(q)}">${esc(q)}</button>`).join("")}</div>` : "";
+  const ask = Number(price)||0, presets = [ask, Math.round(ask*.95/5)*5, Math.round(ask*.9/5)*5].filter((v,i,a)=>v>0 && a.indexOf(v)===i);
+  const offerPanel = open && !seller && status==="active" && S.offerOpen ? `<form class="offerpanel" data-form="offer" novalidate>
+      <div class="op-h"><b>Make an offer</b><button type="button" class="iconbtn sm" data-act="offerClose" aria-label="Close offer">×</button></div>
+      <div class="op-presets">${presets.map(v=>`<button type="button" class="chip" data-act="offerPreset" data-v="${v}">${money(v)}${v===ask?" · asking":""}</button>`).join("")}</div>
+      <div class="op-row"><div class="bigprice sm"><span>$</span><input id="offerAmt" type="number" min="1" step="1" inputmode="numeric" value="${esc(S.offerAmt||presets[1]||ask)}" aria-label="Offer amount"></div><button class="btn primary" type="submit">Send offer</button></div>
+      <p class="fine" style="text-align:left">If the seller accepts, the device is reserved for you. You pay in person at pickup.</p></form>` : "";
+  const draft = (S.msgDraft[t.id||"new:"+lid]||"");
+  const composer = open ? `${quick}${offerPanel}<form class="composer" data-form="msg">
+      ${!seller && status==="active" && !S.offerOpen ? `<button type="button" class="btn sm offerbtn" data-act="offerOpen">${I.tagi||"$"} Offer</button>` : ""}
+      <textarea id="msgText" rows="1" maxlength="1000" placeholder="Message ${esc(otherName||"")}" aria-label="Message">${esc(draft)}</textarea>
+      <button class="sendbtn" type="submit" aria-label="Send">${I.send}</button></form>`
+    : `<div class="closed">${l?(status==="sold"?"This device has sold. You can still read this conversation.":""):"This listing was removed."}</div>`;
+  const back = opts.embedded ? "" : `<a class="iconbtn" href="${opts.backHref||"#inbox"}" aria-label="Back">${I.left}</a>`;
+  return `<section class="convo ${opts.embedded?"embedded":""}" aria-label="Conversation with ${esc(otherName||"")}">
+    <header class="convhead">${back}
+      <a class="person" href="#seller-${esc(otherId)}">${avatar(otherId, otherName, 36)}<span><b>${esc(otherName||"Someone")}</b><span class="role">${seller?"Buyer":"Seller"}${l&&l.city?` · ${esc(l.city)}, ${esc(l.state)}`:""}</span></span></a>
+    </header>
+    <a class="convlisting" href="#item-${esc(lid)}"><span class="tthumb">${photo?`<img src="${esc(photoSrc(photo))}" alt="">`:(ICON[l?l.cat:"other"]||ICON.other)}</span><span class="grow"><b>${esc(title||"Listing")}</b><span>${money(price)}${status&&status!=="active"?` · <span class="status ${status}">${status}</span>`:""}</span></span>${I.right}</a>
+    <div class="msgs2" id="msgs">${empty}${items}</div>
+    <div class="convfoot">${composer}</div>
+  </section>`;
+}
+function threadRow(t, cur){
+  const selling=isMe(t.sellerId), on=selling?t.buyerName:t.sellerName;
+  return `<a class="th-i" href="#thread-${esc(t.id)}" aria-current="${t.id===cur}"><span class="tthumb">${t.listingPhoto?`<img src="${esc(photoSrc(t.listingPhoto))}" alt="">`:ICON.other}</span>
+    <span class="tx"><div class="r1"><b>${esc(on||"Someone")}</b><span class="muted">${ago(t.updatedAt)}</span></div><div class="r2">${esc(t.listingTitle)}</div><div class="r3 ${t.unread?"un":""}">${isMe(t.lastFrom)?"You: ":""}${esc(t.last)}</div></span>${t.unread&&t.id!==cur?'<span class="unreaddot" aria-label="Unread"></span>':""}</a>`;
+}
+function viewInbox(threadId){
+  if(!S.me){ goSignIn(); return ""; }
+  const tf=S.inboxTab;
+  const list = S.threads.filter(t=> tf==="buying" ? isMe(t.buyerId) : tf==="selling" ? isMe(t.sellerId) : true);
+  const tabs = `<div class="tabs" role="tablist">${[["all","All"],["buying","Buying"],["selling","Selling"]].map(([k,n])=>`<button role="tab" aria-selected="${tf===k}" data-act="inboxTab" data-k="${k}">${n}${k!=="all"?` <span class="mono muted">${S.threads.filter(t=>k==="buying"?isMe(t.buyerId):isMe(t.sellerId)).length}</span>`:""}</button>`).join("")}</div>`;
+  if(!S.threads.length) return `<div class="wrap"><div class="pagehead"><h1>Messages</h1></div><div class="empty" style="margin-bottom:50px"><div class="ic">${I.chat}</div><h2>No conversations yet</h2><p class="muted">Tap “Message seller” on any listing to ask about it. When you sell, buyers' questions show up here too.</p><div class="actions"><a class="btn primary" href="#shop">Browse devices</a><a class="btn" href="#sell">Sell a device</a></div></div></div>`;
+  const cur = threadId ? S.threads.find(t=>t.id===threadId) : (!isPhone() ? list[0] : null);
+  if(threadId && !cur) return `<div class="wrap" style="padding-block:30px"><div class="empty"><h2>${S.threadsLoaded?"Conversation not found":"Loading…"}</h2><a class="btn" href="#inbox">All messages</a></div></div>`;
+  if(cur){ S.activeThread=cur.id; wantMsgs(cur.id); }
+  const l = cur && findListing(cur.listingId);
+  if(isPhone() && cur) return convoHTML(cur, l, {backHref:"#inbox"});
+  return `<div class="wrap"><div class="pagehead"><h1>Messages</h1></div>${tabs}
+    <div class="inbox"><div class="threads">${list.length?list.map(t=>threadRow(t, cur&&cur.id)).join(""):`<p class="muted" style="padding:16px">Nothing here yet.</p>`}</div>
+    ${!isPhone()?`<div style="min-width:0">${cur?convoHTML(cur, l, {embedded:true}):""}</div>`:""}</div></div>`;
+}
+function viewChat(listingId){
+  if(!S.me){ goSignIn(); return ""; }
+  const l = findListing(listingId);
+  if(!l) return `<div class="wrap" style="padding-block:30px"><div class="empty"><h2>${S.loaded?"This listing was removed":"Loading…"}</h2><a class="btn" href="#inbox">Messages</a></div></div>`;
+  if(isMe(l.sellerId)){ setTimeout(()=>{ location.hash="item-"+l.id; },0); return ""; }
+  const t = buyerThread(l);
+  S.activeThread = t.id; if(t.id) wantMsgs(t.id); else { S.msgTid=null; S.msgs=[]; }
+  return `<div class="wrap chatwrap">${convoHTML(t, l, {backHref:"#item-"+l.id})}</div>`;
+}
+function scrollMsgsBottom(){ const m=$("#msgs"); if(m) m.scrollTop=m.scrollHeight; }
+function growComposer(){ const ta=$("#msgText"); if(ta){ ta.style.height="auto"; ta.style.height=Math.min(140, ta.scrollHeight)+"px"; } }
 function viewItem(id){
   const l = findListing(id);
   if(!l) return `<div class="wrap" style="padding-block:30px"><div class="empty"><h2>${S.loaded?"This listing was removed":"Loading…"}</h2>${S.loaded?`<a class="btn" href="#shop">Browse devices</a>`:""}</div></div>`;
@@ -327,7 +391,7 @@ function viewItem(id){
   const ix = Math.min(S.photoIx, Math.max(0,photos.length-1));
   const main = photos.length ? `<img src="${esc(photos[ix])}" alt="${esc(l.title)}, photo ${ix+1} of ${photos.length}">` : (ICON[l.cat]||ICON.other).replace('width="64" height="64"','width="150" height="150"');
   const mine = isMe(l.sellerId);
-  let actions="", chat="";
+  let actions="", chat="", cta="", buybar="";
   if(mine){
     actions = `<div class="actions">
       <a class="btn" href="#edit-${esc(l.id)}">Edit listing</a>
@@ -336,20 +400,16 @@ function viewItem(id){
       ${l.status!=="active"?`<button class="btn" data-act="status" data-id="${esc(l.id)}" data-s="active">Relist</button>`:""}
       <button class="btn ghost danger" data-act="askDel" data-id="${esc(l.id)}">Delete</button></div>`;
     const ts = S.threads.filter(t=>t.listingId===l.id && isMe(t.sellerId));
-    if(ts.length){
-      const cur = ts.find(t=>t.id===S.activeThread) || ts[0];
-      S.activeThread = cur.id; wantMsgs(cur.id);
-      chat = `<div><div class="eyebrow" style="margin-bottom:8px">Buyers asking (${ts.length})</div>
-        ${ts.length>1?`<div class="chips" style="margin-bottom:10px">${ts.map(t=>`<button class="chip" data-act="pick" data-tid="${esc(t.id)}" aria-pressed="${t.id===cur.id}">${esc(t.buyerName||"Someone")}${t.unread?" •":""}</button>`).join("")}</div>`:""}
-        ${chatHTML(cur,l)}</div>`;
-    } else chat = `<div class="notice plain"><span>No buyers have messaged yet. Share the link to get more eyes on it.</span><button class="btn sm" data-act="share" style="margin-left:auto">${I.share} Copy link</button></div>`;
-  } else if(S.me){
-    const t = buyerThread(l); S.activeThread=t.id; if(t.id) wantMsgs(t.id);
-    if(l.status==="reserved" && l.reservedFor && !isMe(l.reservedFor)) actions = `<div class="notice warn">Reserved for another buyer. You can still message the seller in case it falls through.</div>`;
-    if(l.status==="reserved" && isMe(l.reservedFor)) actions = `<div class="notice">${I.check} Reserved for you at <b>${money(l.agreedPrice||l.price)}</b>. Pay at pickup after you've checked the device works and Activation Lock is off.</div>`;
-    chat = chatHTML(t,l);
+    chat = ts.length ? `<div class="sellerthreads"><div class="eyebrow">Buyers asking (${ts.length})</div><div class="threads">${ts.map(t=>threadRow(t,null)).join("")}</div></div>`
+      : `<div class="notice plain"><span>No buyers have messaged yet. Share the link to get more eyes on it.</span><button class="btn sm" data-act="share">${I.share} Copy link</button></div>`;
   } else {
-    actions = `<div class="notice"><span>Sign in to message the seller or make an offer.</span><a class="btn primary sm" href="#signin" style="margin-left:auto">Sign in</a></div>`;
+    const t = S.me ? S.threads.find(x=>x.listingId===l.id && isMe(x.buyerId)) : null;
+    if(S.me && l.status==="reserved" && l.reservedFor && !isMe(l.reservedFor)) actions = `<div class="notice warn">Reserved for another buyer. You can still message the seller in case it falls through.</div>`;
+    if(S.me && l.status==="reserved" && isMe(l.reservedFor)) actions = `<div class="notice">${I.check}<span>Reserved for you at <b>${money(l.agreedPrice||l.price)}</b>. Pay at pickup after you've checked the device works and Activation Lock is off.</span></div>`;
+    const btns = l.status==="sold" ? `<button class="btn lg" disabled>Sold</button>`
+      : `<a class="btn primary lg" href="#chat-${esc(l.id)}">${I.chat}${t?"Continue chat":"Message seller"}</a>${l.status==="active"?`<a class="btn lg" href="#chat-${esc(l.id)}?offer=1">Make offer</a>`:""}`;
+    cta = `<div class="cta">${btns}</div>${t?`<a class="lastmsg" href="#chat-${esc(l.id)}">${t.unread?'<span class="unreaddot"></span>':""}<span>${isMe(t.lastFrom)?"You: ":esc((t.sellerName||"Seller").split(" ")[0])+": "}${esc(t.last)}</span><span class="muted">${ago(t.updatedAt)}</span></a>`:!S.me&&l.status!=="sold"?`<p class="muted" style="font-size:13px">You'll be asked to sign in first. It's free.</p>`:""}`;
+    if(l.status!=="sold") buybar = `<div class="buybar"><a class="btn primary" href="#chat-${esc(l.id)}">${I.chat}${t?"Continue chat":"Message seller"}</a>${l.status==="active"?`<a class="btn" href="#chat-${esc(l.id)}?offer=1">Make offer</a>`:""}</div>`;
   }
   const similar = S.listings.filter(x=>x.id!==l.id && active(x) && x.cat===l.cat).sort((a,b)=>(b.state===l.state)-(a.state===l.state) || b.createdAt-a.createdAt).slice(0,4);
   return `<div class="wrap">
@@ -367,6 +427,7 @@ function viewItem(id){
       <div class="pricebig"><span class="tag">${money(l.price)}</span>${l.origPrice&&l.origPrice>l.price?`<span class="dropnote">Dropped from ${money(l.origPrice)}</span>`:""}</div>
       <div class="locline">${I.pin}<span>Pickup in ${l.city?`<a href="#shop?state=${esc(l.state)}&city=${encodeURIComponent(l.city)}">${esc(l.city)}</a>, `:""}<a href="#shop?state=${esc(l.state)}">${esc(STATES[l.state]||l.state||"—")}</a></span></div>
       <div class="stats"><span>Listed ${ago(l.createdAt)}</span>${l.views?`<span>${I.eye}${l.views} ${l.views===1?"view":"views"}</span>`:""}</div>
+      ${cta}
       <a class="sellercard" href="#seller-${esc(l.sellerId)}">${avatar(l.sellerId,l.sellerName,42)}<span class="grow"><b>${esc(showName(l.sellerId,l.sellerName))}</b><span class="muted" style="display:block;font-size:13px">See all listings from this seller</span></span>${I.right}</a>
       ${actions}
       <div class="actions">${!mine&&l.status!=="sold"?`<button class="btn sm" data-act="save" data-id="${esc(l.id)}" aria-pressed="${S.saved.has(l.id)}">${I.heart} ${S.saved.has(l.id)?"Saved":"Save"}</button>`:""}<button class="btn sm" data-act="share">${I.share} Copy link</button>${!mine?`<button class="btn sm ghost" data-act="report" data-id="${esc(l.id)}">${I.flag} Report</button>`:""}</div>
@@ -376,6 +437,7 @@ function viewItem(id){
       <div class="notice plain" style="font-size:13.5px">${I.shield}<span>Meet in a public place. Check it powers on, shows the battery health listed, and is signed out of Find My before you pay.</span></div>
     </div>
   </div>
+  ${buybar}
   ${similar.length?`<section class="section"><div class="sechead"><h2>More ${esc(catOf(l.cat).p)}${l.state?" near "+esc(STATES[l.state]||""):""}</h2></div><div class="grid">${similar.map(x=>cardHTML(x)).join("")}</div></section>`:""}
   </div>`;
 }
@@ -487,7 +549,7 @@ function viewSell(editId){
 
         <section class="sbox" aria-labelledby="h-price"><h2 id="h-price">Price &amp; Location</h2>
           <div class="field"><label class="lbl" for="price"><span>Listing Price (USD)</span><span class="note">Zero seller commission</span></label>
-            <div class="bigprice"><span>$</span><input id="price" name="price" type="number" min="1" step="5" inputmode="numeric" placeholder="750" value="${esc(d.price)}"></div>
+            <div class="bigprice"><span>$</span><input id="price" name="price" type="number" min="1" step="1" inputmode="numeric" placeholder="750" value="${esc(d.price)}"></div>
             <div id="estimate">${marketEstimate(d)}</div></div>
           <div class="field"><label for="place">Pickup Area / Safe Exchange Spot</label>
             <div class="withicon">${I.pin.replace('width="15" height="15"','width="18" height="18"')}<input id="place" name="place" list="places" placeholder="City, State (e.g. Mesa, Arizona)" value="${esc(d.place)}" autocomplete="off"></div>${placeList()}
@@ -579,20 +641,6 @@ function viewAccount(){
 }
 
 /* ---------- views: inbox ---------- */
-function viewInbox(){
-  if(!S.me){ goSignIn(); return ""; }
-  if(!S.threads.length) return `<div class="wrap"><div class="pagehead"><h1>Messages</h1></div><div class="empty" style="margin-bottom:50px"><div class="ic">${I.chat}</div><h2>No conversations yet</h2><p class="muted">Message a seller from any listing, or post a device and buyers will reach you here.</p><div class="actions"><a class="btn primary" href="#shop">Browse devices</a><a class="btn" href="#sell">Sell a device</a></div></div></div>`;
-  const cur = S.threads.find(t=>t.id===S.activeThread) || S.threads[0];
-  S.activeThread=cur.id; wantMsgs(cur.id);
-  const l = findListing(cur.listingId);
-  return `<div class="wrap"><div class="pagehead"><h1>Messages</h1></div>
-  <div class="inbox">
-    <div class="threads">${S.threads.map(t=>{ const selling=isMe(t.sellerId); const on=selling?t.buyerName:t.sellerName;
-      return `<button class="th-i" data-act="pick" data-tid="${esc(t.id)}" aria-current="${t.id===cur.id}"><span class="tthumb">${t.listingPhoto?`<img src="${esc(photoSrc(t.listingPhoto))}" alt="">`:ICON.other}</span><span class="tx"><div><b>${esc(on||"Someone")}</b> <span class="role">${selling?"Buyer":"Seller"}</span></div><div style="font-size:13px">${esc(t.listingTitle)}</div><div class="muted" style="font-size:13px">${esc(t.last)} · ${ago(t.updatedAt)}</div></span>${t.unread&&t.id!==cur.id?'<span class="unreaddot" aria-label="Unread"></span>':""}</button>`; }).join("")}</div>
-    <div style="min-width:0">${chatHTML(cur,l,{link:true})}</div>
-  </div></div>`;
-}
-
 /* ---------- views: sign in ---------- */
 function viewSignIn(){
   if(S.me){ location.hash = S.next || "home"; return ""; }
@@ -644,10 +692,11 @@ function render(soft){
   const app=$("#app");
   const ae=document.activeElement, fid=ae&&ae.id&&app.contains(ae)?ae.id:null, sel=fid&&ae.selectionStart!=null?[ae.selectionStart,ae.selectionEnd]:null, val=fid?ae.value:null;
   const msgsEl=$("#msgs"), atBottom = msgsEl ? (msgsEl.scrollHeight-msgsEl.scrollTop-msgsEl.clientHeight<40) : true;
-  const views = {home:viewHome, shop:viewShop, item:()=>viewItem(S.param), sell:()=>viewSell(null), edit:()=>viewSell(S.param), mine:viewMine, saved:viewSaved, seller:()=>viewSeller(S.param), account:viewAccount, inbox:viewInbox, signin:viewSignIn};
+  const views = {home:viewHome, shop:viewShop, item:()=>viewItem(S.param), sell:()=>viewSell(null), edit:()=>viewSell(S.param), mine:viewMine, saved:viewSaved, seller:()=>viewSeller(S.param), account:viewAccount, inbox:()=>viewInbox(null), thread:()=>viewInbox(S.param), chat:()=>viewChat(S.param), signin:viewSignIn};
   app.innerHTML=(views[S.route]||viewHome)();
-  if(fid){ const el=document.getElementById(fid); if(el && el!==document.activeElement){ if(["msgText","aemail","apass","aname","acity","accName","accCity","fCity"].includes(fid) && val!=null) el.value=val; el.focus({preventScroll:true}); if(sel) try{el.setSelectionRange(sel[0],sel[1]);}catch(e){} } }
+  if(fid){ const el=document.getElementById(fid); if(el && el!==document.activeElement){ if(["aemail","apass","aname","acity","accName","accCity","fCity"].includes(fid) && val!=null) el.value=val; el.focus({preventScroll:true}); if(sel) try{el.setSelectionRange(sel[0],sel[1]);}catch(e){} } }
   const m=$("#msgs"); if(m && (atBottom||!soft)) m.scrollTop=m.scrollHeight;
+  growComposer();
   paintChrome();
 }
 function paintChrome(){
@@ -655,15 +704,18 @@ function paintChrome(){
   $("#unread").innerHTML = n?`<span class="badge">${n}</span>`:"";
   $("#unreadTab").innerHTML = n?`<span class="badge">${n}</span>`:"";
   $("#unreadBell").innerHTML = n?`<span class="badge">${n}</span>`:"";
-  $("#pageLabel").textContent = {sell:"Sell",edit:"Edit",inbox:"Messages",mine:"Profile",account:"Account",saved:"Saved",signin:"Sign in",seller:"Seller"}[S.route]||"";
-  document.body.classList.toggle("compact", ["sell","edit","inbox","mine","account","saved","signin","seller"].includes(S.route));
+  $("#pageLabel").textContent = {chat:"Messages",thread:"Messages",sell:"Sell",edit:"Edit",inbox:"Messages",mine:"Profile",account:"Account",saved:"Saved",signin:"Sign in",seller:"Seller"}[S.route]||"";
+  document.body.classList.toggle("signedout", !S.me);
+  document.body.classList.toggle("chatmode", isPhone() && (S.route==="chat" || S.route==="thread"));
+  document.title = (n?`(${n}) `:"") + "Applesmart: buy and sell used Apple devices near you";
+  document.body.classList.toggle("compact", ["chat","thread","sell","edit","inbox","mine","account","saved","signin","seller"].includes(S.route));
   $("#locBtn").innerHTML = `${I.pin}<span>${esc(locLabel())}</span>`;
   $("#who").innerHTML = S.me
     ? `<button class="avbtn" data-act="menu" aria-haspopup="true" aria-expanded="${S.menuOpen}" aria-label="Account menu">${avatar(S.me.id,S.me.name,36)}</button>
        ${S.menuOpen?`<div class="menu" role="menu"><div class="mhead"><b>${esc(S.me.name)}</b><div class="muted" style="font-size:13px">${esc(placeLabel(S.me.city,S.me.state)||S.me.email||"")}</div></div>
          <a href="#mine" role="menuitem">My listings</a><a href="#saved" role="menuitem">Saved</a><a href="#inbox" role="menuitem">Messages</a><a href="#seller-${esc(S.me.id)}" role="menuitem">Public profile</a><a href="#account" role="menuitem">Account settings</a><button data-act="logout" role="menuitem">Sign out</button></div>`:""}`
     : `<a class="btn sm" href="#signin">Sign in</a>`;
-  const tab = {home:"home",shop:"shop",item:"home",sell:"sell",edit:"sell",inbox:"inbox",mine:"mine",account:"mine",saved:"mine",signin:"mine",seller:"home"}[S.route];
+  const tab = {chat:"inbox",thread:"inbox",home:"home",shop:"shop",item:"home",sell:"sell",edit:"sell",inbox:"inbox",mine:"mine",account:"mine",saved:"mine",signin:"mine",seller:"home"}[S.route];
   $$(".tabbar a").forEach(a=>a.classList.toggle("on", a.dataset.tab===tab));
   const tq=$("#q"); if(tq && document.activeElement!==tq) tq.value = S.route==="shop" ? S.f.q : "";
 }
@@ -686,12 +738,15 @@ function route(){
   if(name.startsWith("item-")){ S.route="item"; S.param=name.slice(5); }
   else if(name.startsWith("edit-")){ S.route="edit"; S.param=name.slice(5); }
   else if(name.startsWith("seller-")){ S.route="seller"; S.param=name.slice(7); }
+  else if(name.startsWith("thread-")){ S.route="thread"; S.param=name.slice(7); }
+  else if(name.startsWith("chat-")){ S.route="chat"; S.param=name.slice(5); if(new URLSearchParams(qs||"").get("offer")==="1") S.offerOpen=true; }
   else if(name==="shop"){ S.route="shop"; S.param=""; applyShopParams(qs||""); }
   else if(["sell","inbox","signin","mine","saved","account"].includes(name)){ S.route=name; S.param=""; }
   else { S.route="home"; S.param=""; }
   if(prev!==S.route+S.param){
     S.photoIx=0; S.authErr=""; S.acctMsg=""; S.railOpen=false;
-    if(S.route!=="inbox") S.activeThread=null;
+    if(!["inbox","thread","chat"].includes(S.route)) S.activeThread=null;
+    if(!(S.route==="chat" && /offer=1/.test(h))) S.offerOpen=false; S.offerAmt="";
     if(S.route!=="sell"&&S.route!=="edit") S.draft=null;
     if(S.route==="mine"||S.route==="edit") loadMine();
     window.scrollTo(0,0);
@@ -703,30 +758,39 @@ addEventListener("hashchange", route);
 
 /* ---------- data ---------- */
 async function loadListings(){ try{ const xs=await api("GET","/api/listings"); const changed=JSON.stringify(xs)!==JSON.stringify(S.listings); S.listings=xs; const first=!S.loaded; S.loaded=true; if(changed||first) render(true); }catch(e){ S.loaded=true; render(true); } }
-async function loadThreads(){ if(!S.me) return; try{ const ts=await api("GET","/api/threads"); if(JSON.stringify(ts)!==JSON.stringify(S.threads)){ S.threads=ts; render(true); } }catch(e){ if(e.status===401){ S.me=null; render(); } } }
+async function loadThreads(){ if(!S.me) return; try{ const ts=await api("GET","/api/threads"); const first=!S.threadsLoaded; S.threadsLoaded=true; if(first||JSON.stringify(ts)!==JSON.stringify(S.threads)){ S.threads=ts; render(true); } }catch(e){ if(e.status===401){ S.me=null; render(); } } }
 async function loadSaved(){ if(!S.me) return; try{ S.saved=new Set(await api("GET","/api/saved")); render(true); }catch(e){} }
 async function loadMine(){ if(!S.me) return; try{ S.mine=await api("GET","/api/mine"); if(["mine","edit"].includes(S.route)) render(true); }catch(e){} }
 async function loadSeller(id){ S.sellers[id]=false; try{ S.sellers[id]=await api("GET",`/api/users/${encodeURIComponent(id)}`); }catch(e){ S.sellers[id]= e.status===404?null:false; } if(S.route==="seller") render(true); }
 async function loadMsgs(){
   const tid=S.msgTid; if(!tid||!S.me) return;
   try{ const ms=await api("GET",`/api/threads/${encodeURIComponent(tid)}/messages`);
-    if(tid===S.msgTid && JSON.stringify(ms)!==JSON.stringify(S.msgs)){ S.msgs=ms; render(true); } }catch(e){}
+    if(tid===S.msgTid && JSON.stringify(ms)!==JSON.stringify(S.msgs)){ const hadSys=S.msgs.filter(x=>x.kind==="sys").length; S.msgs=ms; if(ms.filter(x=>x.kind==="sys").length>hadSys) loadListings(); render(true); } }catch(e){}
 }
 function wantMsgs(tid){ if(S.msgTid===tid) return; S.msgTid=tid; S.msgs=[]; setTimeout(loadMsgs,0); }
 function every(ms, fn){ setInterval(()=>{ if(!document.hidden) fn(); }, ms); }
 every(30000, loadListings);
-every(8000, loadThreads);
-every(4000, ()=>{ if(S.route==="item"||S.route==="inbox") loadMsgs(); });
+every(5000, loadThreads);
+every(3000, ()=>{ if(["chat","thread","inbox"].includes(S.route)) loadMsgs(); });
+matchMedia("(max-width:720px)").addEventListener("change", ()=>render(true));
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden){ loadListings(); loadThreads(); loadMsgs(); } });
 
 /* ---------- writes ---------- */
+function currentConvo(){
+  if(S.route==="chat"){ const l=findListing(S.param); return l&&S.me ? {l, t:buyerThread(l)} : null; }
+  const t=S.threads.find(x=>x.id===S.activeThread); return t ? {t, l:findListing(t.listingId)} : null;
+}
 async function sendMsg(l, t, body){
   if(!S.me) return goSignIn();
+  const key = t.id || "new:"+l.id;
+  const tmp = {tid:key, from:S.me.id, kind:body.kind, text:body.text||"", amount:body.amount, at:Date.now(), pending:true};
+  S.pending.push(tmp); render(true); scrollMsgsBottom();
   try{
     if(t.id) await api("POST",`/api/threads/${encodeURIComponent(t.id)}/messages`, body);
-    else { const r=await api("POST",`/api/listings/${encodeURIComponent(l.id)}/messages`, body); S.activeThread=r.threadId; wantMsgs(r.threadId); }
-    await loadThreads(); await loadMsgs(); render(true);
-  }catch(e){ fail(e); }
+    else { const r=await api("POST",`/api/listings/${encodeURIComponent(l.id)}/messages`, body); S.activeThread=r.threadId; S.msgTid=r.threadId; }
+    await loadThreads(); await loadMsgs();
+  }catch(e){ if(body.kind==="text") S.msgDraft[key]=body.text; fail(e); }
+  finally{ S.pending=S.pending.filter(p=>p!==tmp); render(true); scrollMsgsBottom(); }
 }
 function downscale(file, maxPx, q){
   return new Promise((res, rej) => {
@@ -804,7 +868,10 @@ document.addEventListener("click", async e => {
     case "reset": Object.assign(f,{q:"",cat:"",grades:new Set(),min:"",max:"",batt:"",lockOnly:false,hideSold:true,sort:"new"}); shopChanged(); break;
     case "rail": S.railOpen=!S.railOpen; render(true); break;
     case "photo": S.photoIx=Number(t.dataset.i); render(true); break;
-    case "pick": S.activeThread=t.dataset.tid; render(); break;
+    case "inboxTab": S.inboxTab=t.dataset.k; render(true); break;
+    case "offerOpen": S.offerOpen=true; render(true); setTimeout(()=>{ const i=$("#offerAmt"); i&&i.focus(); i&&i.select(); },30); break;
+    case "offerClose": S.offerOpen=false; render(true); break;
+    case "offerPreset": S.offerAmt=t.dataset.v; { const i=$("#offerAmt"); if(i) i.value=t.dataset.v; } break;
     case "authMode": S.authMode=S.authMode==="up"?"in":"up"; S.authErr=""; render(); break;
     case "logout": try{ await api("POST","/api/auth/logout"); }catch(err){} S.me=null; S.threads=[]; S.saved=new Set(); S.mine=null; S.msgTid=null; S.menuOpen=false; toast("Signed out"); location.hash="home"; render(); break;
     case "save": { e.stopPropagation(); if(!S.me) return goSignIn(); const id=t.dataset.id; const on=!S.saved.has(id); on?S.saved.add(id):S.saved.delete(id); render(true); toast(on?"Saved":"Removed from saved");
@@ -815,7 +882,7 @@ document.addEventListener("click", async e => {
     case "del": { const id=t.dataset.id; closeDialog(); try{ await api("DELETE",`/api/listings/${encodeURIComponent(id)}`); toast("Listing deleted"); await loadListings(); loadMine(); if(S.route==="item") location.hash="mine"; else render(true); }catch(err){ fail(err); } break; }
     case "status": setStatus(t.dataset.id, t.dataset.s); break;
     case "mineTab": S.mineTab=t.dataset.k; render(true); break;
-    case "quick": { const l=findListing(S.param); if(l) sendMsg(l,buyerThread(l),{kind:"text",text:t.dataset.text}); break; }
+    case "quick": { const c=currentConvo(); if(c&&c.l) sendMsg(c.l,c.t,{kind:"text",text:t.dataset.text}); break; }
     case "accept": if(!S.activeThread) return;
       try{ await api("POST",`/api/threads/${encodeURIComponent(S.activeThread)}/accept`,{amount:Number(t.dataset.amt)}); await loadListings(); await loadMsgs(); toast("Reserved for this buyer"); }catch(err){ fail(err); } break;
     case "pickPhotos": $("#photoIn")&&$("#photoIn").click(); break;
@@ -825,6 +892,7 @@ document.addEventListener("click", async e => {
   }
 });
 document.addEventListener("keydown", e => {
+  if(e.target.id==="msgText" && e.key==="Enter" && !e.shiftKey && !e.isComposing){ e.preventDefault(); const f=e.target.form; f&&f.requestSubmit(); return; }
   if(e.key==="Enter" && e.target.matches(".card[data-go]")) location.hash=e.target.dataset.go;
   if(e.key==="Escape" && S.menuOpen){ S.menuOpen=false; paintChrome(); }
   if(S.route==="item" && !e.target.closest("input,textarea,select") && (e.key==="ArrowLeft"||e.key==="ArrowRight")){
@@ -855,15 +923,16 @@ document.addEventListener("submit", async e => {
     catch(err){ S.busy=false; S.authErr=err.message; render(); }
     return;
   }
-  const l = S.route==="item" ? findListing(S.param) : findListing((S.threads.find(x=>x.id===S.activeThread)||{}).listingId);
-  if(!l) return;
-  const th = S.threads.find(x=>x.id===S.activeThread) || buyerThread(l);
-  if(kind==="msg"){ const inp=$("#msgText"); const v=inp.value.trim(); if(!v) return; inp.value=""; sendMsg(l,th,{kind:"text",text:v}); }
-  if(kind==="offer"){ const v=Number($("#offerAmt").value); if(!(v>0)) return toast("Enter an offer above $0"); sendMsg(l,th,{kind:"offer",amount:Math.round(v)}); }
+  const c = currentConvo(); if(!c || !c.l) return;
+  const key = c.t.id || "new:"+c.l.id;
+  if(kind==="msg"){ const inp=$("#msgText"); const v=inp.value.trim(); if(!v) return; inp.value=""; S.msgDraft[key]=""; growComposer(); sendMsg(c.l,c.t,{kind:"text",text:v}); inp.focus(); }
+  if(kind==="offer"){ const v=Math.round(Number($("#offerAmt").value)); if(!(v>0)) return toast("Enter an offer above $0"); S.offerOpen=false; S.offerAmt=""; sendMsg(c.l,c.t,{kind:"offer",amount:v}); }
 });
 let qT;
 document.addEventListener("input", e => {
   const el=e.target, f=S.f;
+  if(el.id==="msgText"){ const c=currentConvo(); if(c&&c.l) S.msgDraft[c.t.id||"new:"+c.l.id]=el.value; growComposer(); return; }
+  if(el.id==="offerAmt"){ S.offerAmt=el.value; return; }
   if(S.route==="shop"){
     if(el.id==="fmin"||el.id==="fmax"){ clearTimeout(qT); qT=setTimeout(()=>{ f[el.id.slice(1)]=el.value; render(); syncShopHash(); },250); return; }
     if(el.id==="fCity"){ clearTimeout(qT); qT=setTimeout(()=>{ const v=el.value.trim(); const match=[...$("#fCities").options].some(o=>o.value.toLowerCase()===v.toLowerCase()); if(!v||match){ setLoc(S.loc.state,v); render(); syncShopHash(); } },300); return; }

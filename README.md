@@ -9,7 +9,7 @@ A marketplace for buying and selling used Apple devices with local pickup across
 - **Shop**: search, device type, condition, price range, minimum battery health, Activation Lock filter, sorting, shareable filter links
 - **Item page**: photo gallery, inspection sheet, price-drop badge, view count, seller profile link, chat and offers, share link, report listing, similar listings nearby
 - **Accounts**: My listings (views, chats, saves per listing), Saved, public seller profiles, account settings with home location
-- **Messaging**: buyer–seller chat, offers, seller accepts to reserve
+- **Messaging**: "Message seller" and "Make offer" on every listing (sticky bar on phones; signed-out buyers sign in and land back in the chat); full-screen conversations with the device at the top, quick questions, Enter to send, multi-line messages, offers with presets, seller accepts to reserve, "Seen" receipts, unread badges; inbox with All / Buying / Selling
 
 ## Stack
 
@@ -55,7 +55,7 @@ DATABASE_URL=postgres://localhost/applesmart npm start
 | PATCH | `/api/listings/:id/status` | Mark active, reserved or sold (seller only) |
 | POST | `/api/photos` | Upload a photo as a base64 data URL |
 | POST | `/api/listings/:id/messages` | Buyer starts or continues a conversation |
-| GET | `/api/threads` | Your conversations, with unread flags |
+| GET | `/api/threads` | Your conversations, with unread flags and when the other person last read them |
 | GET / POST | `/api/threads/:id/messages` | Read or send messages (participants only) |
 | POST | `/api/threads/:id/accept` | Seller accepts an offer and reserves the device |
 | GET / PUT / DELETE | `/api/saved/:id` | Saved listings |
