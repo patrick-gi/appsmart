@@ -198,7 +198,7 @@ function communityHTML(store="apple"){
   const seen = S.seenEvents;
   const evs = a.events.filter(e=>e.type==="join" || (e.store||"apple")===store);
   const feed = evs.length ? `<ul class="evlist">${evs.slice(0,8).map(e=>eventHTML(e, seen && !seen.has(key(e)))).join("")}</ul>`
-    : `<div class="feedempty"><b>The community is just getting started</b><p class="muted">Be one of the first members. New members, listings and sales will show up here as they happen.</p>${S.me?`<a class="btn primary sm" href="${store==="ev"?"#sell?store=ev":"#sell"}">${store==="ev"?"List a Tesla or part":"List a device"}</a>`:`<a class="btn primary sm" href="#signin" data-act="joinNow">Join Applesmart</a>`}</div>`;
+    : `<div class="feedempty"><b>The community is just getting started</b><p class="muted">Be one of the first members. New members, listings and sales will show up here as they happen.</p>${S.me?`<a class="btn primary sm" href="${store==="ev"?"#sell?store=ev":"#sell"}">${store==="ev"?"List a Tesla or part":"List a device"}</a>`:`<a class="btn primary sm" href="#signin" data-act="joinNow">Join Hinova Marketplace</a>`}</div>`;
   return `<section class="section" id="community"><div class="wrap">
     <div class="sechead"><div><h2>Community activity</h2><p class="muted" style="margin-top:4px">Real members, real listings, as they happen.</p></div>${S.me?"":`<a class="btn primary sm" href="#signin" data-act="joinNow">Join the community</a>`}</div>
     <div class="community">
@@ -292,7 +292,7 @@ function viewHome(){
   </div></section>`;
 }
 
-/* ---------- Tesla storefront (Applesmart EV) ---------- */
+/* ---------- Tesla storefront ---------- */
 const evVehicle = l => storeOf(l)==="ev" && EVD.isVehicle(l.cat);
 const storeCats = st => st==="ev" ? EVD.CATS : CATS;
 function checkLabel(l, k){
@@ -485,7 +485,7 @@ function viewSellEv(editId){
   return `<div class="wrap"><form class="sellv3" data-form="sell" novalidate>
     ${editId?"":storePick("ev")}
     <div class="shead">
-      <div class="top"><span class="eyebrow">${editId?"Edit listing":"New listing · Applesmart EV"}</span><span class="minttag">${I.bolt}Free to list</span></div>
+      <div class="top"><span class="eyebrow">${editId?"Edit listing":"New listing · Tesla"}</span><span class="minttag">${I.bolt}Free to list</span></div>
       <h1>${editId?"Update your listing":"Sell a Tesla or Tesla gear"}</h1>
       <p class="sub">${veh?"Buyers compare mileage, range, Autopilot and title status first. Your VIN is only shown to signed-in members.":"Chargers, wheels and accessories. Say which models it fits so the right buyers find it."}</p>
     </div>
@@ -551,7 +551,7 @@ function viewShop(){
   else body = `<div class="grid">${xs.map(l=>cardHTML(l)).join("")}</div>`;
   return `<div class="wrap">
     <div class="shophead">
-      <nav class="crumbs" aria-label="Breadcrumb"><a href="${ev?"#ev":"#home"}">${ev?"Applesmart EV":"Applesmart"}</a> / <a href="#shop" data-act="clearLoc">United States</a>${S.loc.state?` / <a href="#shop?state=${S.loc.state}" data-act="setCity" data-city="">${esc(STATES[S.loc.state])}</a>`:""}${S.loc.city?` / <span>${esc(S.loc.city)}</span>`:""}</nav>
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="${ev?"#ev":"#home"}">${ev?"Hinova Marketplace · Tesla":"Hinova Marketplace"}</a> / <a href="#shop" data-act="clearLoc">United States</a>${S.loc.state?` / <a href="#shop?state=${S.loc.state}" data-act="setCity" data-city="">${esc(STATES[S.loc.state])}</a>`:""}${S.loc.city?` / <span>${esc(S.loc.city)}</span>`:""}</nav>
       <h1>${esc(title)}</h1>
       ${cityChips}
     </div>
@@ -923,7 +923,7 @@ function viewMine(){
     <div class="tabs" role="tablist">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${S.mineTab===k}" data-act="mineTab" data-k="${k}">${n} <span class="mono muted">${by(k).length}</span></button>`).join("")}</div>
     ${S.mine==null?`<div class="rows"><p class="muted">Loading…</p></div>`: xs.length?`<div class="rows">${xs.map(rowHTML).join("")}</div>`
       : `<div class="empty" style="margin-bottom:50px"><h2>${S.mineTab==="active"?"Nothing for sale right now":S.mineTab==="reserved"?"Nothing reserved":"Nothing sold yet"}</h2><p class="muted">${S.mineTab==="active"?"List a device and it will show up for buyers in your state.":"Listings move here as buyers reserve and buy them."}</p>${S.mineTab==="active"?`<a class="btn primary" href="#sell">Sell a device</a>`:""}</div>`}
-    <div class="supportcard"><span>Questions, a problem with a buyer or seller, or feedback? Applesmart is a product of <b>Hinovaiq</b>.</span><a href="mailto:support@hinovaiq.io">support@hinovaiq.io</a></div>
+    <div class="supportcard"><span>Questions, a problem with a buyer or seller, or feedback? Hinova Marketplace is a product of <b>Hinovaiq</b>.</span><a href="mailto:support@hinovaiq.io">support@hinovaiq.io</a></div>
   </div>`;
 }
 function viewSaved(){
@@ -962,7 +962,7 @@ function viewAccount(){
       ${S.acctMsg?`<p class="${S.acctMsg.startsWith("Saved")?"muted":"err"}" role="status">${esc(S.acctMsg)}</p>`:""}
       <div class="actions"><button class="btn primary" type="submit" ${S.busy?"disabled":""}>Save changes</button><a class="btn ghost" href="#seller-${esc(m.id)}">View public profile</a><button class="btn ghost danger" type="button" data-act="logout" style="margin-left:auto">Sign out</button></div>
     </form>
-    <div style="margin-top:16px"><div class="supportcard"><span>Questions, a problem with a buyer or seller, or feedback? Applesmart is a product of <b>Hinovaiq</b>.</span><a href="mailto:support@hinovaiq.io">support@hinovaiq.io</a></div></div></div>`;
+    <div style="margin-top:16px"><div class="supportcard"><span>Questions, a problem with a buyer or seller, or feedback? Hinova Marketplace is a product of <b>Hinovaiq</b>.</span><a href="mailto:support@hinovaiq.io">support@hinovaiq.io</a></div></div></div>`;
 }
 
 /* ---------- views: inbox ---------- */
@@ -976,7 +976,7 @@ function viewSignIn(){
       <li>${I.check}<span>Browse by state and city, from Seattle to Miami</span></li>
       <li>${I.check}<span>Chat, make offers, and pay in person at pickup</span></li></ul></div>
     <form data-form="auth" novalidate>
-      <div><div class="eyebrow">${up?"Create an account":"Welcome back"}</div><h1 style="font-size:28px;margin-top:4px">${up?"Join Applesmart":"Sign in"}</h1></div>
+      <div><div class="eyebrow">${up?"Create an account":"Welcome back"}</div><h1 style="font-size:28px;margin-top:4px">${up?"Join Hinova Marketplace":"Sign in"}</h1></div>
       ${up?`<div class="field"><label for="aname">Your name</label><input id="aname" autocomplete="name" maxlength="40" placeholder="Shown to buyers and sellers"></div>
       <div class="row2"><div class="field"><label for="astate">State</label><select id="astate">${stateOptions(S.loc.state,"Choose later")}</select></div>
       <div class="field"><label for="acity">City</label><input id="acity" maxlength="40" autocomplete="address-level2" value="${esc(S.loc.city)}"></div></div>`:""}
@@ -984,7 +984,7 @@ function viewSignIn(){
       <div class="field"><label for="apass">Password</label><input id="apass" type="password" autocomplete="${up?"new-password":"current-password"}" minlength="8" required>${up?'<span class="hint">At least 8 characters.</span>':""}</div>
       ${S.authErr?`<p class="err" role="alert">${esc(S.authErr)}</p>`:""}
       <button class="btn primary lg block" type="submit" ${S.busy?"disabled":""}>${S.busy?"One moment…":up?"Create account":"Sign in"}</button>
-      <p class="muted" style="font-size:14px">${up?"Already have an account?":"New to Applesmart?"} <button type="button" class="linkbtn" data-act="authMode">${up?"Sign in":"Create an account"}</button></p>
+      <p class="muted" style="font-size:14px">${up?"Already have an account?":"New to Hinova Marketplace?"} <button type="button" class="linkbtn" data-act="authMode">${up?"Sign in":"Create an account"}</button></p>
     </form></div></div>`;
 }
 
@@ -995,7 +995,7 @@ function closeDialog(){ const d=dlg(); if(d.open) d.close(); }
 function locDialog(){
   const st=S.loc.state;
   openDialog(`<form class="dlg" data-form="loc"><h2 id="dlgTitle">Where are you shopping?</h2>
-    <p class="muted" style="font-size:14px">Applesmart is local pickup only, so pick the area you can travel to.</p>
+    <p class="muted" style="font-size:14px">Hinova Marketplace is local pickup only, so pick the area you can travel to.</p>
     <div class="field"><label for="locState">State</label><select id="locState">${stateOptions(st,"All of the US")}</select></div>
     <div class="field" ${st?"":"hidden"} id="locCityWrap"><label for="locCity">City <span class="muted" style="font-weight:400">(optional)</span></label><input id="locCity" list="locCities" value="${esc(S.loc.city)}" placeholder="Any city">${st?cityList("locCities",st):`<datalist id="locCities"></datalist>`}</div>
     <div class="dact">${S.me&&S.me.state?`<button type="button" class="btn ghost" data-act="useMyLoc" style="margin-right:auto">Use ${esc(placeLabel(S.me.city,S.me.state))}</button>`:""}<button type="button" class="btn ghost" data-act="closeDlg">Cancel</button><button class="btn primary" type="submit">Show listings</button></div></form>`);
@@ -1053,7 +1053,7 @@ function paintChrome(){
   $("#pageLabel").textContent = {chat:"Messages",thread:"Messages",sell:"Sell",edit:"Edit",inbox:"Messages",mine:"Profile",account:"Account",saved:"Saved",signin:"Sign in",seller:"Seller"}[S.route]||"";
   document.body.classList.toggle("signedout", !S.me);
   document.body.classList.toggle("chatmode", isPhone() && (S.route==="chat" || S.route==="thread"));
-  document.title = (n?`(${n}) `:"") + "Applesmart: buy and sell used Apple devices near you";
+  document.title = (n?`(${n}) `:"") + "Hinova Marketplace: buy and sell used Apple devices and Teslas near you";
   document.body.classList.toggle("compact", ["chat","thread","sell","edit","inbox","mine","account","saved","signin","seller"].includes(S.route));
   $("#locBtn").innerHTML = `${I.pin}<span>${esc(locLabel())}</span>`;
   $("#who").innerHTML = S.me
@@ -1270,7 +1270,7 @@ document.addEventListener("submit", async e => {
     const up=S.authMode==="up";
     const body={email:$("#aemail").value, password:$("#apass").value}; if(up){ body.name=$("#aname").value; body.state=$("#astate").value; body.city=$("#acity").value; }
     S.busy=true; S.authErr=""; render();
-    try{ S.me=await api("POST", up?"/api/auth/register":"/api/auth/login", body); S.busy=false; toast(up?"Welcome to Applesmart":"Signed in");
+    try{ S.me=await api("POST", up?"/api/auth/register":"/api/auth/login", body); S.busy=false; toast(up?"Welcome to Hinova Marketplace":"Signed in");
       if(S.me.state && !S.loc.state) setLoc(S.me.state,S.me.city);
       loadThreads(); loadSaved(); loadMine(); loadActivity(); location.hash = S.next && S.next!=="signin" ? S.next : "home"; render(); }
     catch(err){ S.busy=false; S.authErr=err.message; render(); }

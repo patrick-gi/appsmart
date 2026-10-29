@@ -694,5 +694,5 @@ app.use((err, req, res, next) => {
 });
 
 migrate()
-  .then(() => app.listen(PORT, () => console.log(`Applesmart listening on ${PORT}`)))
+  .then(() => app.listen(PORT, () => console.log(`Hinova Marketplace listening on ${PORT}`)))
   .catch((e) => { console.error("Migration failed", e); process.exit(1); });

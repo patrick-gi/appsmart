@@ -1,5 +1,5 @@
 /* Tesla storefront reference data. Shared by the browser (window.EV) and the server (require).
-   Applesmart is an independent marketplace and is not affiliated with Tesla, Inc. */
+   Hinova Marketplace is an independent marketplace and is not affiliated with Tesla, Inc. */
 (function (root) {
   "use strict";
   const MODELS = {

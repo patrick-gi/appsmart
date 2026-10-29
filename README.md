@@ -1,12 +1,12 @@
-# Applesmart
+# Hinova Marketplace
 
 **A product of [Hinovaiq](mailto:support@hinovaiq.io).** Support: support@hinovaiq.io
 
-A marketplace for buying and selling used Apple devices — and, in the **Applesmart EV** storefront, used Teslas and Tesla gear — with local pickup across the United States. Sellers list iPhones, iPads, Macs, Apple Watches and AirPods with photos, storage, condition, battery health, Activation Lock status and their city and state. Buyers browse by state and city, filter, message the seller and make offers. Payment happens in person at pickup.
+A marketplace for buying and selling used Apple devices — and, in the **Tesla** storefront, used Teslas and Tesla gear — with local pickup across the United States. Sellers list iPhones, iPads, Macs, Apple Watches and AirPods with photos, storage, condition, battery health, Activation Lock status and their city and state. Buyers browse by state and city, filter, message the seller and make offers. Payment happens in person at pickup.
 
 ## Features
 
-- **Applesmart EV (Tesla storefront)** at `#ev`: its own dark home page, Apple | Tesla switch in the header. Vehicle listings (Model 3, Y, S, X, Cybertruck) capture year, trim, colour, mileage, estimated range, Autopilot package, VIN, title status, accident history, owners and seller-confirmed checks; the title is built from year + model + trim. Accessories (charging, wheels and tires, parts) capture product name, which models they fit and whether they're genuine. Shop filters for mileage, model year, Full Self-Driving and clean title. VINs are shown only to signed-in members. Independent marketplace — not affiliated with Apple Inc. or Tesla, Inc.
+- **Tesla storefront** at `#ev`: its own dark home page, Apple | Tesla switch in the header. Vehicle listings (Model 3, Y, S, X, Cybertruck) capture year, trim, colour, mileage, estimated range, Autopilot package, VIN, title status, accident history, owners and seller-confirmed checks; the title is built from year + model + trim. Accessories (charging, wheels and tires, parts) capture product name, which models they fit and whether they're genuine. Shop filters for mileage, model year, Full Self-Driving and clean title. VINs are shown only to signed-in members. Independent marketplace — not affiliated with Apple Inc. or Tesla, Inc.
 - **Community activity** (home page): live feed of real members joining, devices listed and devices sold, plus member / for-sale / sold / city counts. Members appear by first name and last initial only; anyone can opt out in Account settings
 - **US locations**: every listing has a state (all 50 + DC) and city; shoppers pick a location, browse state and city pages (`#shop?state=AZ&city=Phoenix`), and see city chips with counts
 - **Listing upload**: device tabs, photo slots (drag-and-drop or paste up to 8, reorder, first is primary), model suggestions, storage selector, battery capacity with status, Grade A/B/C cards, Activation Lock plus seller-confirmed checks (Face ID, clean IMEI, original parts), big price field with a market estimate from real listings, single "City, State" pickup field, live buyer-card preview; draft autosaves
@@ -27,9 +27,9 @@ A marketplace for buying and selling used Apple devices — and, in the **Apples
 
 1. Push this folder to a GitHub repository.
 2. In Render, choose **New → Blueprint** and pick the repository. Render reads `render.yaml` and creates:
-   - `applesmart`, a Node web service
-   - `applesmart-db`, a Postgres database, wired in through `DATABASE_URL`
-3. Click **Apply**. The first deploy takes a few minutes. The site is then live at `https://applesmart.onrender.com` (or a similar name if that one is taken).
+   - `hinova-marketplace`, a Node web service
+   - `hinova-marketplace-db`, a Postgres database, wired in through `DATABASE_URL`
+3. Click **Apply**. The first deploy takes a few minutes. The live site currently runs at `https://applesmart.onrender.com`; point a custom domain (for example `marketplace.hinovaiq.io`) at it to match the brand.
 
 Both are on Render's free plan. The free web service sleeps after 15 minutes without traffic and takes about a minute to wake. The free database expires 30 days after creation, so upgrade the database plan before then to keep your data.
 
@@ -37,7 +37,7 @@ Both are on Render's free plan. The free web service sleeps after 15 minutes wit
 
 ```bash
 npm install
-DATABASE_URL=postgres://localhost/applesmart npm start
+DATABASE_URL=postgres://localhost/hinova_marketplace npm start
 # open http://localhost:3000
 ```
 

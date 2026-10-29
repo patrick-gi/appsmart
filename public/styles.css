@@ -1,4 +1,4 @@
-/* Applesmart v3 — follows the seller mockup: soft lavender-white ground, white rounded
+/* Hinova Marketplace v3 — follows the seller mockup: soft lavender-white ground, white rounded
    sections, filled (borderless) inputs, deep green primary, mint for trust signals,
    yellow price tag sitting on the photo. */
 :root{
@@ -710,7 +710,7 @@ body.signedout .nav .bell{display:none}
   .ev{padding:10px 8px;gap:10px;font-size:14px}
 }
 
-/* =================== v6: Tesla storefront (Applesmart EV) =================== */
+/* =================== v6: Tesla storefront (Hinova Marketplace) =================== */
 .storeswitch{display:inline-flex;background:var(--fill);border-radius:999px;padding:3px;gap:2px;flex:none}
 .storeswitch a{padding:6px 12px;border-radius:999px;font-weight:700;font-size:13px;text-decoration:none;color:var(--muted)}
 .storeswitch a[aria-current="page"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.15)}
@@ -756,3 +756,8 @@ body[data-store="ev"] .pill.ok{background:var(--ok-soft);color:var(--ok)}
 .seg4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
 .seg4 label{white-space:normal;min-width:0;line-height:1.25;display:flex;align-items:center;justify-content:center}
 @media (max-width:720px){ .seg4{grid-template-columns:1fr 1fr} }
+
+/* Hinova Marketplace wordmark */
+.brand b{letter-spacing:-.03em}
+.brand .bsub{font-weight:600;font-size:15px;color:var(--muted);letter-spacing:-.01em;margin-left:-3px}
+@media (max-width:1100px){ .brand .bsub{display:none} }
