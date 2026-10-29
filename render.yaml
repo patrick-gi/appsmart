@@ -13,6 +13,14 @@ services:
         fromDatabase:
           name: hinova-marketplace-db
           property: connectionString
+      # Email (verification codes, password resets, account notices) via Resend. Verification is enforced once this is set.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        value: Hinova Marketplace <no-reply@hinovaiq.io>
+      # Comma-separated moderator emails. Each must be verified before it gets admin access.
+      - key: ADMIN_EMAILS
+        sync: false
 
 databases:
   - name: hinova-marketplace-db

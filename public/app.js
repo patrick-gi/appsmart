@@ -79,18 +79,25 @@ const S = {
   f:{store:"apple", q:"", cat:"", grades:new Set(), min:"", max:"", batt:"", lockOnly:false, hideSold:true, sort:"new", maxMiles:"", minYear:"", fsd:false, clean:false},
   route:"home", param:"", activeThread:null, msgs:[], msgTid:null, photoIx:0,
   draft:null, draftErr:"", busy:false, uploading:0, railOpen:false, menuOpen:false, allStates:false,
-  mineTab:"active", searches:[], savedTab:"devices", store:"apple", lastStore:"apple", sellStore:"apple", activity:null, seenEvents:null, sellers:{}, pending:[], msgDraft:{}, offerOpen:false, offerAmt:"", inboxTab:"all", threadsLoaded:false, authMode:"in", authErr:"", next:"", acctMsg:""
+  mineTab:"active", searches:[], savedTab:"devices", store:"apple", lastStore:"apple", sellStore:"apple", activity:null, seenEvents:null, sellers:{}, pending:[], msgDraft:{}, offerOpen:false, offerAmt:"", inboxTab:"all", threadsLoaded:false, authMode:"in", authErr:"", next:"", acctMsg:"",
+  cfg:{verifyRequired:false, mailEnabled:false}, sessions:null, blocks:null, admin:{}, adminTab:"reports", verifyState:"", verifyErr:"", resendAt:0, forgotMsg:"", resetTok:"", authForm:{}
 };
 
 /* ---------- api ---------- */
 async function api(method, url, body){
   const res = await fetch(url, {method, headers: body?{"Content-Type":"application/json"}:{}, body: body?JSON.stringify(body):undefined, credentials:"same-origin"});
   let data=null; try{ data=await res.json(); }catch(e){}
-  if(!res.ok){ const err=new Error((data&&data.error)||"Something went wrong. Try again."); err.status=res.status; throw err; }
+  if(!res.ok){ const err=new Error((data&&data.error)||"Something went wrong. Try again."); err.status=res.status; err.code=data&&data.code; throw err; }
   return data;
 }
 function toast(t){ const el=$("#toast"); el.textContent=t; el.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>el.hidden=true,2800); }
-function fail(e){ if(e.status===401){ S.me=null; goSignIn(); } toast(e.message); }
+function fail(e){
+  if(e.status===401){ S.me=null; goSignIn(); }
+  else if(e.code==="verify_required"){ closeDialog(); goVerify(); }
+  else if(e.code==="terms_required"){ termsDialog(); return; }
+  else if(e.code==="suspended"){ S.me=null; location.hash="home"; render(); }
+  toast(e.message);
+}
 
 /* ---------- small renderers ---------- */
 function initials(n){ return (n||"?").split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join("")||"?"; }
@@ -789,7 +796,7 @@ function convoHTML(t, l, opts={}){
   const lid = l ? l.id : t.listingId, title = l ? l.title : t.listingTitle, price = l ? l.price : t.listingPrice, status = l ? l.status : t.listingStatus;
   const photo = l ? (l.photos||[])[0] : t.listingPhoto;
   const open = !!l && status!=="sold";
-  let lastDay="", lastMineIdx=-1;
+  let lastDay="", lastMineIdx=-1, tipShown=false;
   ms.forEach((m,i)=>{ if(isMe(m.from) && m.kind!=="sys") lastMineIdx=i; });
   const items = ms.map((m,i)=>{
     let out="";
@@ -801,9 +808,10 @@ function convoHTML(t, l, opts={}){
       const canAccept = seller && !mine && status==="active" && !m.pending;
       body = `<div class="offerbub"><span class="eyebrow">${mine?"You offered":"Offer"}</span><b>${money(m.amount)}</b>${price?`<span class="muted">Asking ${money(price)}</span>`:""}${canAccept?`<button class="btn primary sm" data-act="accept" data-amt="${Number(m.amount)}">Accept &amp; reserve</button>`:""}</div>`;
     } else body = `<span class="tx">${esc(m.text)}</span>`;
+    const tip = !mine && !tipShown && m.kind==="text" && RISKY.test(m.text||"") ? (tipShown=true, safetyTip()) : "";
     const seen = mine && i===lastMineIdx && !m.pending && t.otherReadAt && t.otherReadAt>=m.at;
     const meta = m.pending ? "Sending…" : clock(m.at) + (seen ? " · Seen" : "");
-    return out+`<div class="bub ${mine?"me":""} ${m.kind==="offer"?"isoffer":""} ${m.pending?"pending":""}">${body}<span class="bt">${meta}</span></div>`;
+    return out+`<div class="bub ${mine?"me":""} ${m.kind==="offer"?"isoffer":""} ${m.pending?"pending":""}">${body}<span class="bt">${meta}</span></div>`+tip;
   }).join("");
   const empty = !ms.length ? `<div class="convempty">${avatar(otherId, otherName, 52)}<b>${seller?"No messages yet":`Ask ${esc(otherName||"the seller")} about this ${esc(catOf(l?l.cat:"").n)}`}</b><p class="muted">${seller?"":"Questions about condition, battery or pickup are a good start. Keep payment and meetup in person."}</p></div>` : "";
   const quick = open && !seller && !ms.length ? `<div class="quickq">${QUICK.map(q=>`<button type="button" class="chip" data-act="quick" data-text="${esc(q)}">${esc(q)}</button>`).join("")}</div>` : "";
@@ -814,7 +822,7 @@ function convoHTML(t, l, opts={}){
       <div class="op-row"><div class="bigprice sm"><span>$</span><input id="offerAmt" type="number" min="1" step="1" inputmode="numeric" value="${esc(S.offerAmt||presets[1]||ask)}" aria-label="Offer amount"></div><button class="btn primary" type="submit">Send offer</button></div>
       <p class="fine" style="text-align:left">If the seller accepts, the device is reserved for you. You pay in person at pickup.</p></form>` : "";
   const draft = (S.msgDraft[t.id||"new:"+lid]||"");
-  const composer = open ? `${quick}${offerPanel}<form class="composer" data-form="msg">
+  const composer = t.blocked ? `<div class="closed">You blocked ${esc(otherName||"this member")}, so you can't message each other. <button class="linkbtn" data-act="unblock" data-id="${esc(otherId)}">Unblock</button></div>` : open ? `${quick}${offerPanel}<form class="composer" data-form="msg">
       ${!seller && status==="active" && !S.offerOpen ? `<button type="button" class="btn sm offerbtn" data-act="offerOpen">${I.tagi||"$"} Offer</button>` : ""}
       <textarea id="msgText" rows="1" maxlength="1000" placeholder="Message ${esc(otherName||"")}" aria-label="Message">${esc(draft)}</textarea>
       <button class="sendbtn" type="submit" aria-label="Send">${I.send}</button></form>`
@@ -823,6 +831,7 @@ function convoHTML(t, l, opts={}){
   return `<section class="convo ${opts.embedded?"embedded":""}" aria-label="Conversation with ${esc(otherName||"")}">
     <header class="convhead">${back}
       <a class="person" href="#seller-${esc(otherId)}">${avatar(otherId, otherName, 36)}<span><b>${esc(otherName||"Someone")}</b><span class="role">${seller?"Buyer":"Seller"}${l&&l.city?` · ${esc(l.city)}, ${esc(l.state)}`:""}</span></span></a>
+      <button class="iconbtn convmenu" data-act="convoMenu" data-id="${esc(otherId)}" data-name="${esc(otherName||"")}" data-blocked="${t.blocked?1:0}" aria-label="Block or report ${esc(otherName||"member")}" title="Block or report"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
     </header>
     <a class="convlisting" href="#item-${esc(lid)}"><span class="tthumb">${photo?`<img src="${esc(photoSrc(photo))}" alt="">`:(ICON[l?l.cat:"other"]||ICON.other)}</span><span class="grow"><b>${esc(title||"Listing")}</b><span>${money(price)}${status&&status!=="active"?` · <span class="status ${status}">${status}</span>`:""}</span></span>${I.right}</a>
     <div class="msgs2" id="msgs">${empty}${items}</div>
@@ -948,6 +957,7 @@ function draftChecks(d){
     ["enter the model and colour", !!d.title.trim()],
     ["set a price", Number(d.price)>0],
     ["enter your pickup area as City, State", !!(d.state && d.city)],
+    ["turn off Activation Lock (locked devices can't be listed)", !!d.lockOff || !LOCKABLE.includes(d.cat)],
   ];
 }
 function marketEstimate(d){
@@ -1023,7 +1033,7 @@ function viewSell(editId){
         <section class="sbox" aria-labelledby="h-cond"><div class="bh"><h2 id="h-cond">Cosmetic Condition</h2></div>
           <div class="gradelist" role="radiogroup" aria-label="Cosmetic condition">${Object.entries(GRADES).map(([k,g])=>`<label><input type="radio" name="grade" value="${k}" ${d.grade===k?"checked":""}><span><b>${g.n} · ${g.t}</b>${k==="A"?'<span class="toptag">Top Value</span>':""}<span class="gd">${g.d}</span></span></label>`).join("")}</div>
           <div class="lockcard">
-            <label class="lk"><input type="checkbox" name="lockOff" id="lockOff" ${d.lockOff?"checked":""}><span><b>Activation Lock is Off ${I.unlock}</b><span class="d">Device is fully signed out of Apple ID, iCloud, and Find My.</span></span></label>
+            <label class="lk"><input type="checkbox" name="lockOff" id="lockOff" ${d.lockOff?"checked":""}><span><b>Activation Lock is Off ${I.unlock}</b><span class="d">Device is fully signed out of Apple ID, iCloud, and Find My. Required for iPhone, iPad, Mac and Apple Watch.</span></span></label>
             <div class="checks">${checksFor(d.cat).map(([k,t])=>`<label><input type="checkbox" name="chk" value="${k}" ${d.checks.includes(k)?"checked":""}>${t}</label>`).join("")}<p class="chknote">Confirmed by you, the seller. Buyers can check these at pickup.</p></div>
           </div>
         </section>
@@ -1063,14 +1073,15 @@ function rowHTML(l){
     <a class="th" href="#item-${esc(l.id)}" aria-label="${esc(l.title)}">${p?`<img src="${esc(photoSrc(p))}" alt="" loading="lazy">`:ICON[l.cat]||ICON.other}</a>
     <div style="min-width:0">
       <h3><a href="#item-${esc(l.id)}">${esc(l.title)}</a></h3>
+      ${l.removed?`<p class="modnote">${I.shield} Removed by Hinova Marketplace moderators${l.removedReason?`: ${esc(l.removedReason)}`:""}. Buyers can't see it. Questions? <a href="mailto:support@hinovaiq.io">support@hinovaiq.io</a></p>`:""}
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:2px"><b>${money(l.price)}</b>${l.status!=="active"?`<span class="status ${l.status}" style="font-size:10px">${l.status}</span>`:""}<span class="muted" style="font-size:13px;display:inline-flex;gap:4px;align-items:center">${I.pin}${esc(placeLabel(l.city,l.state))}</span></div>
       <div class="rowstats"><span>${I.eye}${l.views||0} views</span><span>${I.chat}${l.threadCount||0} chats</span><span>${I.heart.replace('width="18" height="18"','width="15" height="15"')}${l.saveCount||0} saves</span><span>Listed ${ago(l.createdAt)}</span></div>
     </div>
-    <div class="actions">
+    <div class="actions">${l.removed?`<button class="btn sm ghost danger" data-act="askDel" data-id="${esc(l.id)}">Delete</button></div></div>`:`
       <a class="btn sm" href="#edit-${esc(l.id)}">Edit</a>
       ${l.status==="sold"?`<button class="btn sm" data-act="status" data-id="${esc(l.id)}" data-s="active">Relist</button>`:`<button class="btn sm primary" data-act="status" data-id="${esc(l.id)}" data-s="sold">Mark sold</button>`}
       <button class="btn sm ghost danger" data-act="askDel" data-id="${esc(l.id)}">Delete</button>
-    </div></div>`;
+    </div></div>`}`;
 }
 function viewMine(){
   if(!S.me){ goSignIn(); return ""; }
@@ -1135,13 +1146,14 @@ function viewAccount(){
       ${S.acctMsg?`<p class="${S.acctMsg.startsWith("Saved")?"muted":"err"}" role="status">${esc(S.acctMsg)}</p>`:""}
       <div class="actions"><button class="btn primary" type="submit" ${S.busy?"disabled":""}>Save changes</button><a class="btn ghost" href="#seller-${esc(m.id)}">View public profile</a><button class="btn ghost danger" type="button" data-act="logout" style="margin-left:auto">Sign out</button></div>
     </form>
+    ${securityHTML()}
     <div style="margin-top:16px"><div class="supportcard"><span>Questions, a problem with a buyer or seller, or feedback? Hinova Marketplace is a product of <b>Hinovaiq</b>.</span><a href="mailto:support@hinovaiq.io">support@hinovaiq.io</a></div></div></div>`;
 }
 
 /* ---------- views: inbox ---------- */
 /* ---------- views: sign in ---------- */
 function viewSignIn(){
-  if(S.me){ location.hash = S.next || "home"; return ""; }
+  if(S.me){ if(location.hash==="#signin"||!location.hash) location.hash = S.next && !/^(signin|verify|forgot|reset)/.test(S.next) ? S.next : "home"; return ""; }
   const up = S.authMode==="up";
   return `<div class="wrap"><div class="auth">
     <div class="pitch"><h2>Used Apple, nearby and checked.</h2><ul>
@@ -1150,16 +1162,229 @@ function viewSignIn(){
       <li>${I.check}<span>Chat, make offers, and pay in person at pickup</span></li></ul></div>
     <form data-form="auth" novalidate>
       <div><div class="eyebrow">${up?"Create an account":"Welcome back"}</div><h1 style="font-size:28px;margin-top:4px">${up?"Join Hinova Marketplace":"Sign in"}</h1></div>
-      ${up?`<div class="field"><label for="aname">Your name</label><input id="aname" autocomplete="name" maxlength="40" placeholder="Shown to buyers and sellers"></div>
-      <div class="row2"><div class="field"><label for="astate">State</label><select id="astate">${stateOptions(S.loc.state,"Choose later")}</select></div>
-      <div class="field"><label for="acity">City</label><input id="acity" maxlength="40" autocomplete="address-level2" value="${esc(S.loc.city)}"></div></div>`:""}
-      <div class="field"><label for="aemail">Email</label><input id="aemail" type="email" autocomplete="email" required></div>
-      <div class="field"><label for="apass">Password</label><input id="apass" type="password" autocomplete="${up?"new-password":"current-password"}" minlength="8" required>${up?'<span class="hint">At least 8 characters.</span>':""}</div>
+      ${up?`<div class="field"><label for="aname">Your name</label><input id="aname" autocomplete="name" maxlength="40" placeholder="Shown to buyers and sellers" value="${esc(S.authForm.name||"")}"></div>
+      <div class="row2"><div class="field"><label for="astate">State</label><select id="astate">${stateOptions(S.authForm.state??S.loc.state,"Choose later")}</select></div>
+      <div class="field"><label for="acity">City</label><input id="acity" maxlength="40" autocomplete="address-level2" value="${esc(S.authForm.city??S.loc.city)}"></div></div>`:""}
+      <div class="field"><label for="aemail">Email</label><input id="aemail" type="email" autocomplete="email" required value="${esc(S.authForm.email||"")}"></div>
+      <div class="field"><label for="apass">Password</label><input id="apass" type="password" autocomplete="${up?"new-password":"current-password"}" minlength="${up?10:1}" required>${up?'<span class="hint">At least 10 characters. A short phrase only you would know works well.</span>':'<a class="hint forgot" href="#forgot">Forgot password?</a>'}</div>
+      ${up?`<label class="check terms"><input type="checkbox" id="aterms" ${S.authForm.terms?"checked":""}> <span>I'm 18 or older and agree to the <a href="#terms" target="_blank" rel="noopener">Terms of Service</a>, <a href="#privacy" target="_blank" rel="noopener">Privacy Policy</a> and <a href="#rules" target="_blank" rel="noopener">Marketplace Rules</a>.</span></label>`:""}
       ${S.authErr?`<p class="err" role="alert">${esc(S.authErr)}</p>`:""}
       <button class="btn primary lg block" type="submit" ${S.busy?"disabled":""}>${S.busy?"One moment…":up?"Create account":"Sign in"}</button>
       <p class="muted" style="font-size:14px">${up?"Already have an account?":"New to Hinova Marketplace?"} <button type="button" class="linkbtn" data-act="authMode">${up?"Sign in":"Create an account"}</button></p>
     </form></div></div>`;
 }
+
+/* ---------- trust & safety ---------- */
+const LOCKABLE = ["iphone","ipad","mac","watch"];
+const needsVerify = () => !!(S.me && S.cfg.verifyRequired && !S.me.emailVerified);
+function goVerify(){ const h=location.hash.slice(1); if(h && !/^(verify|signin)/.test(h)) S.next=h; location.hash="verify"; }
+// top-of-page notices: verify your email, accept updated terms
+function trustBar(){
+  if(!S.me || ["verify","signin","reset","terms","privacy","rules"].includes(S.route)) return "";
+  if(needsVerify()) return `<div class="trustbar"><div class="wrap">${I.shield}<span><b>Verify your email</b> to list devices, message sellers and make offers. We sent a code to ${esc(S.me.email)}.</span><a class="btn sm primary" href="#verify">Enter code</a></div></div>`;
+  if(S.me.termsOk===false) return `<div class="trustbar"><div class="wrap">${I.shield}<span>We've published our Terms of Service, Privacy Policy and Marketplace Rules. Please review and accept them to keep listing and messaging.</span><button class="btn sm primary" data-act="termsDlg">Review</button></div></div>`;
+  return "";
+}
+function termsDialog(){
+  if(!S.me) return goSignIn();
+  openDialog(`<form class="dlg" data-form="acceptTerms"><h2 id="dlgTitle">Our terms</h2>
+    <p class="muted" style="font-size:14px">Hinova Marketplace now has written Terms of Service, a Privacy Policy and Marketplace Rules. They explain what can be sold, how we protect your data and how moderation works.</p>
+    <div class="policylinks"><a href="#terms" target="_blank" rel="noopener">Terms of Service</a><a href="#privacy" target="_blank" rel="noopener">Privacy Policy</a><a href="#rules" target="_blank" rel="noopener">Marketplace Rules</a></div>
+    <label class="check"><input type="checkbox" id="tAccept"> I'm 18 or older and I agree to the Terms of Service, Privacy Policy and Marketplace Rules.</label>
+    <div class="dact"><button type="button" class="btn ghost" data-act="closeDlg">Not now</button><button class="btn primary" type="submit">Accept</button></div></form>`);
+}
+
+function viewVerify(){
+  const tok = new URLSearchParams(S.param||"").get("token");
+  if(tok){
+    history.replaceState(null,"","#verify"); S.param="";
+    S.verifyState="checking";
+    api("POST","/api/auth/verify",{token:tok}).then(r=>{ S.verifyState="done"; if(r && r.id) S.me=r; else if(S.me) S.me.emailVerified=true; render(); })
+      .catch(e=>{ S.verifyState="bad"; S.verifyErr=e.message; render(); });
+  }
+  if(S.verifyState==="checking") return `<div class="wrap narrow"><div class="authcard"><h1>Checking your link…</h1></div></div>`;
+  if(S.verifyState==="done" || (S.me && S.me.emailVerified)){
+    const next = S.next && !/^(verify|signin)/.test(S.next) ? S.next : "home";
+    return `<div class="wrap narrow"><div class="authcard center"><div class="bigok">${I.check}</div><h1>Email verified</h1><p class="muted">Thanks. You can list devices, message sellers and make offers.</p><a class="btn primary lg" href="#${esc(next)}" data-act="verifyDone">Continue</a></div></div>`;
+  }
+  if(S.verifyState==="bad" && !S.me) return `<div class="wrap narrow"><div class="authcard"><h1>That link didn't work</h1><p class="muted">${esc(S.verifyErr||"It may have expired.")} Sign in and we'll send a fresh code.</p><a class="btn primary" href="#signin">Sign in</a></div></div>`;
+  if(!S.me){ goSignIn(); return ""; }
+  if(!S.cfg.mailEnabled) return `<div class="wrap narrow"><div class="authcard"><h1>Email verification is coming soon</h1><p class="muted">We can't send codes yet, so you can use everything for now. We'll ask you to verify ${esc(S.me.email)} once email is switched on.</p><a class="btn primary" href="#home">Continue</a></div></div>`;
+  const wait = Math.max(0, Math.ceil((S.resendAt - Date.now())/1000));
+  return `<div class="wrap narrow"><form class="authcard" data-form="verify" novalidate>
+    <div class="eyebrow">One last step</div><h1>Check your email</h1>
+    <p class="muted">We sent a 6-digit code to <b>${esc(S.me.email)}</b>. Enter it below, or tap the button in the email. The code expires in 30 minutes.</p>
+    <div class="field"><label for="vcode">Verification code</label><input id="vcode" class="codein" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="••••••" autofocus></div>
+    ${S.verifyErr?`<p class="err" role="alert">${esc(S.verifyErr)}</p>`:""}
+    <button class="btn primary lg block" type="submit" ${S.busy?"disabled":""}>${S.busy?"Checking…":"Verify email"}</button>
+    <p class="muted" style="font-size:14px">Didn't get it? Check spam or promotions, then <button type="button" class="linkbtn" data-act="resendCode" ${wait?"disabled":""}>${wait?`send a new code in ${wait}s`:"send a new code"}</button>.<br>Wrong address? <a href="#account">Change your email</a>.</p>
+  </form></div>`;
+}
+function viewForgot(){
+  return `<div class="wrap narrow"><form class="authcard" data-form="forgot" novalidate>
+    <div class="eyebrow">Account help</div><h1>Reset your password</h1>
+    ${S.forgotMsg?`<div class="notice">${I.check}<span>${esc(S.forgotMsg)}</span></div><p class="muted" style="font-size:14px">No email after a few minutes? Check spam, or write to <a href="mailto:support@hinovaiq.io">support@hinovaiq.io</a>.</p><a class="btn" href="#signin">Back to sign in</a>`
+    :`<p class="muted">Enter the email you signed up with and we'll send you a link to choose a new password.</p>
+    <div class="field"><label for="femail">Email</label><input id="femail" type="email" autocomplete="email" required autofocus></div>
+    ${S.authErr?`<p class="err" role="alert">${esc(S.authErr)}</p>`:""}
+    <button class="btn primary lg block" type="submit" ${S.busy?"disabled":""}>${S.busy?"Sending…":"Send reset link"}</button>
+    <p class="muted" style="font-size:14px">Remembered it? <a href="#signin">Sign in</a></p>`}
+  </form></div>`;
+}
+function viewReset(){
+  const tok = new URLSearchParams(S.param||"").get("token");
+  if(tok){ S.resetTok=tok; history.replaceState(null,"","#reset"); S.param=""; }
+  if(!S.resetTok) return `<div class="wrap narrow"><div class="authcard"><h1>Reset link missing</h1><p class="muted">Open the link from your email again, or ask for a new one.</p><a class="btn primary" href="#forgot">Send a new link</a></div></div>`;
+  return `<div class="wrap narrow"><form class="authcard" data-form="reset" novalidate>
+    <div class="eyebrow">Account help</div><h1>Choose a new password</h1>
+    <div class="field"><label for="rpass">New password</label><input id="rpass" type="password" autocomplete="new-password" minlength="10" required autofocus><span class="hint">At least 10 characters. A short phrase only you would know works well.</span></div>
+    <div class="field"><label for="rpass2">Type it again</label><input id="rpass2" type="password" autocomplete="new-password" required></div>
+    ${S.authErr?`<p class="err" role="alert">${esc(S.authErr)}</p>`:""}
+    <button class="btn primary lg block" type="submit" ${S.busy?"disabled":""}>${S.busy?"Saving…":"Save password and sign in"}</button>
+    <p class="fine" style="text-align:left">For your security, this signs you out on every other device.</p>
+  </form></div>`;
+}
+function viewPolicy(kind){
+  const p = (window.POLICIES||{})[kind]; if(!p) return viewHome();
+  const tabs = [["terms","Terms"],["privacy","Privacy"],["rules","Marketplace Rules"]];
+  return `<div class="wrap policy">
+    <div class="pagehead"><div><div class="eyebrow">Hinova Marketplace · Updated ${esc(p.updated)}</div><h1>${esc(p.title)}</h1><p class="muted">${esc(p.intro)}</p></div></div>
+    <nav class="tabs" aria-label="Policies">${tabs.map(([k,n])=>`<a role="tab" href="#${k}" aria-selected="${k===kind}">${n}</a>`).join("")}</nav>
+    <div class="policygrid"><nav class="toc" aria-label="On this page">${p.sections.map(([h],i)=>`<a href="#${kind}" data-act="toc" data-i="${i}">${esc(h)}</a>`).join("")}</nav>
+    <article>${p.sections.map(([h,b],i)=>`<section id="sec-${i}"><h2>${esc(h)}</h2>${b}</section>`).join("")}
+    <p class="muted" style="font-size:13.5px">Questions about this page? Email <a href="mailto:support@hinovaiq.io">support@hinovaiq.io</a>. Hinova Marketplace is a product of Hinovaiq.</p></article></div>
+  </div>`;
+}
+
+/* account: security and privacy */
+async function loadSecurity(){ if(!S.me) return; try{ const [ss, bl] = await Promise.all([api("GET","/api/me/sessions"), api("GET","/api/blocks")]); S.sessions=ss; S.blocks=bl; if(S.route==="account") render(true); }catch(e){} }
+function securityHTML(){
+  const m=S.me, ss=S.sessions, others = ss ? ss.filter(s=>!s.current).length : 0;
+  const ver = m.emailVerified ? `<span class="pill ok">${I.okc} Verified</span>` : S.cfg.mailEnabled ? `<span class="pill warn">Not verified</span> <a class="linkbtn" href="#verify">Verify now</a>` : `<span class="pill">Not verified yet</span>`;
+  return `<section class="card-form seccard" aria-labelledby="secH"><h2 id="secH">Sign-in &amp; security</h2>
+      <div class="secrow"><div><b>Email</b><div class="muted">${esc(m.email)} ${ver}</div></div><button class="btn sm" data-act="emailDlg">Change email</button></div>
+      <div class="secrow"><div><b>Password</b><div class="muted">Use at least 10 characters you don't use anywhere else.</div></div><button class="btn sm" data-act="pwDlg">Change password</button></div>
+      <div class="secrow col"><div><b>Where you're signed in</b><div class="muted">${ss?`${ss.length} ${ss.length===1?"device":"devices"}`:"Loading…"}</div></div>
+        ${ss?`<ul class="devlist">${ss.map(s=>`<li><span>${esc(s.device)}${s.current?' <span class="pill ok">This device</span>':""}</span><span class="muted">Active ${ago(s.lastSeenAt)}</span></li>`).join("")}</ul>`:""}
+        ${others?`<button class="btn sm" data-act="revokeOthers">Sign out of ${others} other ${others===1?"device":"devices"}</button>`:""}</div>
+    </section>
+    <section class="card-form seccard" aria-labelledby="privH"><h2 id="privH">Privacy &amp; your data</h2>
+      <div class="secrow col"><div><b>Blocked members</b><div class="muted">Blocked members can't message you, and you can't message them.</div></div>
+        ${S.blocks&&S.blocks.length?`<ul class="devlist">${S.blocks.map(b=>`<li><span>${avatar(b.id,b.name,24)} ${esc(b.name)}</span><button class="btn sm ghost" data-act="unblock" data-id="${esc(b.id)}">Unblock</button></li>`).join("")}</ul>`:`<span class="muted" style="font-size:13.5px">${S.blocks?"Nobody blocked.":"Loading…"}</span>`}</div>
+      <div class="secrow"><div><b>Download your data</b><div class="muted">A copy of your profile, listings, messages you sent, saves and reports, as a JSON file.</div></div><a class="btn sm" href="/api/me/export" download>Download</a></div>
+      <div class="secrow"><div><b>Delete account</b><div class="muted">Permanently deletes your profile, listings, photos and conversations.</div></div><button class="btn sm ghost danger" data-act="deleteDlg">Delete account</button></div>
+      <p class="muted" style="font-size:13px;margin:0">Read our <a href="#privacy">Privacy Policy</a>, <a href="#terms">Terms of Service</a> and <a href="#rules">Marketplace Rules</a>.</p>
+    </section>`;
+}
+function pwDialog(){
+  openDialog(`<form class="dlg" data-form="pwChange"><h2 id="dlgTitle">Change password</h2>
+    <div class="field"><label for="pwCur">Current password</label><input id="pwCur" type="password" autocomplete="current-password" required></div>
+    <div class="field"><label for="pwNew">New password</label><input id="pwNew" type="password" autocomplete="new-password" minlength="10" required><span class="hint">At least 10 characters. Your other devices will be signed out.</span></div>
+    <p class="err" id="dlgErr" role="alert" hidden></p>
+    <div class="dact"><button type="button" class="btn ghost" data-act="closeDlg">Cancel</button><button class="btn primary" type="submit">Change password</button></div></form>`);
+}
+function emailDialog(){
+  openDialog(`<form class="dlg" data-form="emailChange"><h2 id="dlgTitle">Change email</h2>
+    <p class="muted" style="font-size:14px">We'll send a code to the new address${S.cfg.verifyRequired?", and you'll need to verify it before you can list or message again":""}. Your current address gets a notice too.</p>
+    <div class="field"><label for="emNew">New email</label><input id="emNew" type="email" autocomplete="email" required></div>
+    <div class="field"><label for="emPw">Your password</label><input id="emPw" type="password" autocomplete="current-password" required></div>
+    <p class="err" id="dlgErr" role="alert" hidden></p>
+    <div class="dact"><button type="button" class="btn ghost" data-act="closeDlg">Cancel</button><button class="btn primary" type="submit">Change email</button></div></form>`);
+}
+function deleteDialog(){
+  openDialog(`<form class="dlg" data-form="deleteAcct"><h2 id="dlgTitle">Delete your account?</h2>
+    <p class="muted" style="font-size:14px">This permanently deletes your profile, ${S.mine&&S.mine.length?`your ${S.mine.length} ${S.mine.length===1?"listing":"listings"}, `:""}photos, saved items and conversations. It can't be undone. <a href="/api/me/export" download>Download your data</a> first if you want a copy.</p>
+    <div class="field"><label for="delPw">Your password</label><input id="delPw" type="password" autocomplete="current-password" required></div>
+    <div class="field"><label for="delConfirm">Type DELETE to confirm</label><input id="delConfirm" autocomplete="off" required></div>
+    <p class="err" id="dlgErr" role="alert" hidden></p>
+    <div class="dact"><button type="button" class="btn ghost" data-act="closeDlg">Keep my account</button><button class="btn dark" type="submit">Delete forever</button></div></form>`);
+}
+const dlgErr = (msg) => { const e=$("#dlgErr"); if(e){ e.textContent=msg; e.hidden=false; } else toast(msg); };
+
+/* conversations: block, report, scam warnings */
+const RISKY = /gift ?cards?|wire (transfer|the money)|western union|moneygram|zelle|cash ?app|venmo|paypal|apple ?pay ?cash|crypto|bitcoin|\bbtc\b|deposit|ship (it|to)|shipping only|(verification|verify|6.digit) code|google voice|code (i|we) (sent|texted)/i;
+function safetyTip(){ return `<div class="safetytip" role="note">${I.shield}<span><b>Stay safe:</b> never pay before you see the item in person, and never share a verification code. Hinova never asks for gift cards, wires, deposits or payment-app transfers. <a href="#rules">Safety tips</a></span></div>`; }
+function convoMenuDialog(otherId, otherName, blocked){
+  openDialog(`<div class="dlg"><h2 id="dlgTitle">${esc(otherName||"This member")}</h2>
+    <div class="menulist">
+      <a class="btn block" href="#seller-${esc(otherId)}" data-act="closeDlg">View profile</a>
+      ${blocked?`<button class="btn block" data-act="unblock" data-id="${esc(otherId)}">Unblock</button>`:`<button class="btn block" data-act="askBlock" data-id="${esc(otherId)}" data-name="${esc(otherName||"")}">Block ${esc(otherName||"member")}</button>`}
+      <button class="btn block danger" data-act="reportMember" data-id="${esc(otherId)}" data-name="${esc(otherName||"")}">${I.flag} Report ${esc(otherName||"member")}</button>
+    </div>
+    <div class="dact"><button class="btn ghost" data-act="closeDlg">Close</button></div></div>`);
+}
+function blockDialog(id, name){
+  openDialog(`<div class="dlg"><h2 id="dlgTitle">Block ${esc(name||"this member")}?</h2><p class="muted">They won't be able to message you, and you won't be able to message them. They aren't told. You can unblock them any time in Account settings.</p>
+    <div class="dact"><button class="btn ghost" data-act="closeDlg">Cancel</button><button class="btn dark" data-act="block" data-id="${esc(id)}">Block</button></div></div>`);
+}
+function reportMemberDialog(id, name){
+  if(!S.me) return goSignIn();
+  openDialog(`<form class="dlg" data-form="reportMember" data-id="${esc(id)}"><h2 id="dlgTitle">Report ${esc(name||"this member")}</h2>
+    <div class="radios">${REASONS.filter(([k])=>k!=="sold-elsewhere").map(([k,t],i)=>`<label><input type="radio" name="reason" value="${k}" ${i===0?"checked":""}>${k==="wrong-info"?"Misleading or dishonest":t}</label>`).join("")}</div>
+    <div class="field"><label for="repNote">What happened? <span class="muted" style="font-weight:400">(optional)</span></label><textarea id="repNote" maxlength="500" rows="3" placeholder="For example: asked me to pay with gift cards"></textarea></div>
+    <p class="fine" style="text-align:left">Our moderators may read this conversation to look into it. ${I.shield} In danger? Call 911.</p>
+    <div class="dact"><button type="button" class="btn ghost" data-act="closeDlg">Cancel</button><button class="btn primary" type="submit">Send report</button></div></form>`);
+}
+
+/* moderation console */
+const ACTIONS = { "account.created":"Account created", "login":"Signed in", "login.failed":"Wrong password", "login.locked":"Sign-in paused", "email.verified":"Email verified", "email.changed":"Email changed",
+  "password.changed":"Password changed", "password.reset":"Password reset", "password.reset_requested":"Reset requested", "sessions.revoked":"Signed out other devices", "terms.accepted":"Accepted terms",
+  "data.exported":"Downloaded data", "account.deleted":"Account deleted", "member.blocked":"Blocked a member", "report.member":"Reported a member", "report.listing":"Reported a listing",
+  "report.dismissed":"Dismissed a report", "report.actioned":"Resolved a report", "listing.created":"Listed an item", "listing.removed":"Removed a listing", "listing.restored":"Restored a listing",
+  "member.suspended":"Suspended a member", "member.reinstated":"Reinstated a member" };
+async function loadAdmin(){
+  if(!S.me || !S.me.isAdmin) return;
+  const A=S.admin, tab=S.adminTab;
+  try{
+    const jobs=[api("GET","/api/admin/overview").then(x=>A.overview=x)];
+    if(tab==="reports") jobs.push(api("GET","/api/admin/reports"+(A.closed?"?status=closed":"")).then(x=>A.reports=x));
+    if(tab==="members") jobs.push(api("GET","/api/admin/users?q="+encodeURIComponent(A.q||"")).then(x=>A.users=x));
+    if(tab==="log") jobs.push(api("GET","/api/admin/audit").then(x=>A.audit=x));
+    await Promise.all(jobs);
+  }catch(e){ fail(e); }
+  if(S.route==="admin") render(true);
+}
+function viewAdmin(){
+  if(!S.me){ goSignIn(); return ""; }
+  if(!S.me.isAdmin) return `<div class="wrap" style="padding-block:30px"><div class="empty"><h2>Moderators only</h2><p class="muted">This page is for the Hinova Marketplace team.</p><a class="btn" href="#home">Home</a></div></div>`;
+  const A=S.admin, o=A.overview, tab=S.adminTab;
+  const kpis = o?`<div class="modkpis"><div><b>${o.openReports}</b><span>Open reports</span></div><div><b>${o.members}</b><span>Members</span></div><div><b>${o.verified}</b><span>Verified</span></div><div><b>${o.newMembers}</b><span>New this week</span></div><div><b>${o.liveListings}</b><span>Live listings</span></div><div><b>${o.suspended}</b><span>Suspended</span></div></div>`:"";
+  const tabs = `<div class="tabs" role="tablist">${[["reports","Reports",o&&o.openReports],["members","Members"],["log","Activity log"]].map(([k,n,c])=>`<button role="tab" aria-selected="${tab===k}" data-act="adminTab" data-k="${k}">${n}${c?` <span class="badge">${c}</span>`:""}</button>`).join("")}</div>`;
+  let body = `<p class="muted">Loading…</p>`;
+  if(tab==="reports" && A.reports){
+    body = `<div class="modbar"><label class="check"><input type="checkbox" id="admClosed" ${A.closed?"checked":""}> Show closed reports</label></div>` + (A.reports.length?`<div class="rows">${A.reports.map(r=>{
+      const what = r.listingId ? `<a href="#item-${esc(r.listingId)}">${esc(r.listingTitle||"Listing")}</a>${r.listingPrice?` · ${money(r.listingPrice)}`:""}${r.listingRemoved?' <span class="pill bad">Removed</span>':""}` : `<b>Member report</b>`;
+      const reason = (REASONS.find(x=>x[0]===r.reason)||[0,r.reason])[1];
+      return `<div class="rowi modrow"><span class="th">${r.listingPhoto?`<img src="${esc(photoSrc(r.listingPhoto))}" alt="">`:r.listingId?ICON.other:avatar(r.memberId||"x", r.memberName, 48)}</span>
+        <div style="min-width:0"><h3>${what}</h3>
+          <div class="rowstats"><span class="pill warn">${esc(reason)}</span><span>About <a href="#seller-${esc(r.memberId)}">${esc(r.memberName||"deleted member")}</a>${r.memberEmail?` (${esc(r.memberEmail)})`:""}${r.memberStatus==="suspended"?' <span class="pill bad">Suspended</span>':""}</span><span>${r.memberReports} ${r.memberReports===1?"report":"reports"} total</span><span>From ${esc(r.reporterName)} · ${ago(r.createdAt)}</span></div>
+          ${r.note?`<p class="modnote">“${esc(r.note)}”</p>`:""}${r.status!=="open"?`<p class="muted" style="font-size:13px;margin:4px 0 0">${r.status==="dismissed"?"Dismissed":"Resolved"} ${ago(r.resolvedAt)}${r.resolution?`: ${esc(r.resolution)}`:""}</p>`:""}</div>
+        ${r.status==="open"?`<div class="actions">${r.listingId&&!r.listingRemoved?`<button class="btn sm" data-act="modDlg" data-kind="remove" data-id="${esc(r.listingId)}" data-name="${esc(r.listingTitle||"")}">Remove listing</button>`:""}${r.memberId&&r.memberStatus==="active"?`<button class="btn sm danger" data-act="modDlg" data-kind="suspend" data-id="${esc(r.memberId)}" data-name="${esc(r.memberName||"")}">Suspend</button>`:""}<button class="btn sm ghost" data-act="modReport" data-id="${r.id}" data-a="dismiss">Dismiss</button><button class="btn sm ghost" data-act="modReport" data-id="${r.id}" data-a="resolve">Resolved</button></div>`:""}</div>`; }).join("")}</div>`
+      : `<div class="empty"><div class="ic">${I.shield}</div><h2>${A.closed?"No closed reports":"No open reports"}</h2><p class="muted">${A.closed?"":"Nice. Reports from members show up here."}</p></div>`);
+  }
+  if(tab==="members" && A.users){
+    body = `<form class="modbar" data-form="admSearch"><input class="input" id="admQ" type="search" placeholder="Search name, email or ID" value="${esc(A.q||"")}"><button class="btn" type="submit">Search</button></form>
+      <div class="rows">${A.users.map(u=>`<div class="rowi modrow"><span class="th">${avatar(u.id,u.name,44)}</span>
+        <div style="min-width:0"><h3><a href="#seller-${esc(u.id)}">${esc(u.name)}</a> ${u.isAdmin?'<span class="pill">Moderator</span>':""}</h3>
+          <div class="rowstats"><span>${esc(u.email)}</span>${u.emailVerified?`<span class="pill ok">Verified</span>`:`<span class="pill">Unverified</span>`}${u.status==="suspended"?`<span class="pill bad">Suspended</span>`:""}${u.locked?`<span class="pill warn">Sign-in paused</span>`:""}<span>${u.listings} listings</span><span>${u.reports} reports${u.openReports?` (${u.openReports} open)`:""}</span><span>Joined ${ago(u.createdAt)}</span>${u.state?`<span>${esc(placeLabel(u.city,u.state))}</span>`:""}</div>
+          ${u.statusReason?`<p class="modnote">Suspended: ${esc(u.statusReason)}</p>`:""}</div>
+        <div class="actions">${u.isAdmin?"":u.status==="suspended"?`<button class="btn sm" data-act="modReinstate" data-id="${esc(u.id)}">Reinstate</button>`:`<button class="btn sm danger" data-act="modDlg" data-kind="suspend" data-id="${esc(u.id)}" data-name="${esc(u.name)}">Suspend</button>`}</div></div>`).join("")||`<p class="muted">No members match.</p>`}</div>`;
+  }
+  if(tab==="log" && A.audit){
+    body = `<div class="auditlog">${A.audit.map(x=>`<div class="arow"><span class="mono muted">${new Date(x.at).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}</span><span><b>${esc(x.actorName||(x.actorId?"Deleted member":"System"))}</b> ${esc(ACTIONS[x.action]||x.action)}${x.targetType==="listing"&&x.detail&&x.detail.title?` · ${esc(x.detail.title)}`:""}${x.detail&&x.detail.reason?` <span class="muted">· ${esc(x.detail.reason)}</span>`:""}</span><span class="mono muted">${x.action==="listing.removed"?`<button class="btn sm" data-act="modRestore" data-id="${esc(x.targetId)}">Restore</button>`:`${esc(x.targetType)} ${esc(x.targetId)}`}</span></div>`).join("")||`<p class="muted">Nothing logged yet.</p>`}</div>
+      <p class="muted" style="font-size:13px">The latest 200 events. Kept for one year. IP addresses are stored for security investigations but not shown here.</p>`;
+  }
+  return `<div class="wrap"><div class="pagehead"><div><div class="eyebrow">Hinova Marketplace team</div><h1>Moderation</h1></div><div class="actions"><button class="btn" data-act="adminRefresh">Refresh</button></div></div>${kpis}${tabs}${body}</div>`;
+}
+function modDialog(kind, id, name){
+  const t = kind==="remove" ? {h:`Remove “${name||"this listing"}”?`, p:"It disappears from the marketplace right away. The seller is emailed the reason and can still delete it. You can restore it later from the Activity log.", b:"Remove listing", ph:"For example: Reported as stolen, IMEI is blacklisted"}
+    : {h:`Suspend ${name||"this member"}?`, p:"They're signed out everywhere, can't sign in, and their listings and profile are hidden. They're emailed the reason and can appeal.", b:"Suspend member", ph:"For example: Asked several buyers for gift-card payments"};
+  openDialog(`<form class="dlg" data-form="modAction" data-kind="${kind}" data-id="${esc(id)}"><h2 id="dlgTitle">${esc(t.h)}</h2><p class="muted" style="font-size:14px">${t.p}</p>
+    <div class="field"><label for="modReason">Reason <span class="muted" style="font-weight:400">(the member sees this)</span></label><textarea id="modReason" maxlength="300" rows="3" placeholder="${esc(t.ph)}" required></textarea></div>
+    <p class="err" id="dlgErr" role="alert" hidden></p>
+    <div class="dact"><button type="button" class="btn ghost" data-act="closeDlg">Cancel</button><button class="btn dark" type="submit">${t.b}</button></div></form>`);
+}
+
 
 /* ---------- dialogs ---------- */
 const dlg = () => $("#dlg");
@@ -1202,9 +1427,10 @@ function render(soft){
   const railEl=$(".rail"), railTop = railEl ? railEl.scrollTop : 0;
   const msgsEl=$("#msgs"), atBottom = msgsEl ? (msgsEl.scrollHeight-msgsEl.scrollTop-msgsEl.clientHeight<40) : true;
   S.store = currentStore(); if(["ev","home","shop","item"].includes(S.route)) S.lastStore = S.store;
-  const views = {ev:viewEvHome, home:viewHome, shop:viewShop, item:()=>viewItem(S.param), sell:()=>viewSell(null), edit:()=>viewSell(S.param), mine:viewMine, saved:viewSaved, seller:()=>viewSeller(S.param), account:viewAccount, inbox:()=>viewInbox(null), thread:()=>viewInbox(S.param), chat:()=>viewChat(S.param), signin:viewSignIn};
-  app.innerHTML=(views[S.route]||viewHome)();
-  if(fid){ const el=document.getElementById(fid); if(el && el!==document.activeElement){ if(["aemail","apass","aname","acity","accName","accCity","fCity"].includes(fid) && val!=null) el.value=val; el.focus({preventScroll:true}); if(sel) try{el.setSelectionRange(sel[0],sel[1]);}catch(e){} } }
+  const views = {ev:viewEvHome, home:viewHome, shop:viewShop, item:()=>viewItem(S.param), sell:()=>viewSell(null), edit:()=>viewSell(S.param), mine:viewMine, saved:viewSaved, seller:()=>viewSeller(S.param), account:viewAccount, verify:viewVerify, forgot:viewForgot, reset:viewReset, terms:()=>viewPolicy("terms"), privacy:()=>viewPolicy("privacy"), rules:()=>viewPolicy("rules"), admin:viewAdmin, inbox:()=>viewInbox(null), thread:()=>viewInbox(S.param), chat:()=>viewChat(S.param), signin:viewSignIn};
+  const html=(views[S.route]||viewHome)();
+  app.innerHTML=trustBar()+html;
+  if(fid){ const el=document.getElementById(fid); if(el && el!==document.activeElement){ if(["aemail","apass","aname","acity","accName","accCity","fCity","vcode","femail","rpass","rpass2","admQ"].includes(fid) && val!=null) el.value=val; el.focus({preventScroll:true}); if(sel) try{el.setSelectionRange(sel[0],sel[1]);}catch(e){} } }
   const m=$("#msgs"); if(m && (atBottom||!soft)) m.scrollTop=m.scrollHeight;
   const rl=$(".rail"); if(rl && railTop) rl.scrollTop=railTop;
   growComposer();
@@ -1229,18 +1455,18 @@ function paintChrome(){
   const sb=$("#savedBadge"); if(sb) sb.innerHTML = sn?`<span class="badge">${sn}</span>`:"";
   const pb=$("#profileBadge"); if(pb) pb.innerHTML = sn?`<span class="badge">${sn}</span>`:"";
   document.body.classList.toggle("noscroll", (S.railOpen && S.route==="shop" && matchMedia("(max-width:900px)").matches) || !$("#viewer").hidden);
-  $("#pageLabel").textContent = {chat:"Messages",thread:"Messages",sell:"Sell",edit:"Edit",inbox:"Messages",mine:"Profile",account:"Account",saved:"Saved",signin:"Sign in",seller:"Seller"}[S.route]||"";
+  $("#pageLabel").textContent = {chat:"Messages",thread:"Messages",sell:"Sell",edit:"Edit",inbox:"Messages",mine:"Profile",account:"Account",saved:"Saved",signin:"Sign in",seller:"Seller",verify:"Verify email",forgot:"Password",reset:"Password",terms:"Terms",privacy:"Privacy",rules:"Rules",admin:"Moderation"}[S.route]||"";
   document.body.classList.toggle("signedout", !S.me);
   document.body.classList.toggle("chatmode", isPhone() && (S.route==="chat" || S.route==="thread"));
   document.title = (n?`(${n}) `:"") + "Hinova Marketplace: buy and sell used Apple devices and Teslas near you";
-  document.body.classList.toggle("compact", ["chat","thread","sell","edit","inbox","mine","account","saved","signin","seller"].includes(S.route));
+  document.body.classList.toggle("compact", ["chat","thread","sell","edit","inbox","mine","account","saved","signin","seller","verify","forgot","reset","terms","privacy","rules","admin"].includes(S.route));
   $("#locBtn").innerHTML = `${I.pin}<span>${esc(locLabel())}</span>`;
   $("#who").innerHTML = S.me
     ? `<button class="avbtn" data-act="menu" aria-haspopup="true" aria-expanded="${S.menuOpen}" aria-label="Account menu">${avatar(S.me.id,S.me.name,36)}</button>
        ${S.menuOpen?`<div class="menu" role="menu"><div class="mhead"><b>${esc(S.me.name)}</b><div class="muted" style="font-size:13px">${esc(placeLabel(S.me.city,S.me.state)||S.me.email||"")}</div></div>
-         <a href="#mine" role="menuitem">My listings</a><a href="#saved" role="menuitem">Saved</a><a href="#inbox" role="menuitem">Messages</a><a href="#seller-${esc(S.me.id)}" role="menuitem">Public profile</a><a href="#account" role="menuitem">Account settings</a><a href="mailto:support@hinovaiq.io" role="menuitem">Help &amp; support</a><button data-act="logout" role="menuitem">Sign out</button></div>`:""}`
+         <a href="#mine" role="menuitem">My listings</a><a href="#saved" role="menuitem">Saved</a><a href="#inbox" role="menuitem">Messages</a><a href="#seller-${esc(S.me.id)}" role="menuitem">Public profile</a><a href="#account" role="menuitem">Account settings</a>${S.me.isAdmin?`<a href="#admin" role="menuitem">Moderation</a>`:""}<a href="#rules" role="menuitem">Safety &amp; rules</a><a href="mailto:support@hinovaiq.io" role="menuitem">Help &amp; support</a><button data-act="logout" role="menuitem">Sign out</button></div>`:""}`
     : `<a class="btn sm" href="#signin">Sign in</a>`;
-  const tab = {ev:"home",chat:"inbox",thread:"inbox",home:"home",shop:"shop",item:"home",sell:"sell",edit:"sell",inbox:"inbox",mine:"mine",account:"mine",saved:"mine",signin:"mine",seller:"home"}[S.route];
+  const tab = {ev:"home",chat:"inbox",thread:"inbox",home:"home",shop:"shop",item:"home",sell:"sell",edit:"sell",inbox:"inbox",mine:"mine",account:"mine",saved:"mine",signin:"mine",seller:"home",verify:"mine",forgot:"mine",reset:"mine",admin:"mine"}[S.route];
   $$(".tabbar a").forEach(a=>a.classList.toggle("on", a.dataset.tab===tab));
   const tq=$("#q"); if(tq && document.activeElement!==tq) tq.value = S.route==="shop" ? S.f.q : "";
 }
@@ -1269,7 +1495,8 @@ function route(){
   else if(name.startsWith("chat-")){ S.route="chat"; S.param=name.slice(5); if(new URLSearchParams(qs||"").get("offer")==="1") S.offerOpen=true; }
   else if(name==="shop"){ S.route="shop"; S.param=""; applyShopParams(qs||""); }
   else if(name==="sell"){ S.route="sell"; S.param=""; S.sellStore = new URLSearchParams(qs||"").get("store")==="ev" ? "ev" : "apple"; }
-  else if(["inbox","signin","mine","saved","account"].includes(name)){ S.route=name; S.param=""; }
+  else if(["inbox","signin","mine","saved","account","forgot","terms","privacy","rules","admin"].includes(name)){ S.route=name; S.param=""; }
+  else if(name==="verify"||name==="reset"){ S.route=name; S.param=qs||""; }
   else if(name==="ev"){ S.route="ev"; S.param=""; }
   else { S.route="home"; S.param=""; }
   if(prev!==S.route+S.param){
@@ -1278,7 +1505,11 @@ function route(){
     if(!(S.route==="chat" && /offer=1/.test(h))) S.offerOpen=false; S.offerAmt="";
     if(S.route!=="sell"&&S.route!=="edit") S.draft=null;
     if(S.route==="mine"||S.route==="edit") loadMine();
-    window.scrollTo(0,0);
+    if(S.route==="account"){ S.sessions=null; loadSecurity(); }
+    if(S.route==="admin") loadAdmin();
+    if(S.route==="forgot") S.forgotMsg="";
+    if(S.route==="verify" && !S.param){ S.verifyErr=""; if(S.verifyState!=="checking") S.verifyState=""; }
+    window.scrollTo({top:0, left:0, behavior:"instant"});
   }
   render();
   if(prev!==S.route+S.param) $("#app").focus({preventScroll:true});
@@ -1345,7 +1576,7 @@ async function addPhotos(files){
   // upload in parallel, but add them in the order the seller picked them so the first one stays the cover
   const ids = await Promise.all(list.map(async f=>{
     try{ const data=await downscale(f,1600,.82); return (await api("POST","/api/photos",{data})).id; }
-    catch(e){ S.draftErr=e.message; if(e.status===401) goSignIn(); return null; }
+    catch(e){ S.draftErr=e.message; if(e.status===401) goSignIn(); else if(e.code==="verify_required") goVerify(); else if(e.code==="terms_required") termsDialog(); return null; }
   }));
   S.uploading -= list.length;
   if(S.draft===d) ids.forEach(id=>{ if(id) d.photos.push(id); });
@@ -1364,7 +1595,7 @@ async function saveListing(){
     S.busy=false; if(isNew) lsSet(draftKey(d),null); S.draft=null;
     if(S.me && !S.me.state){ S.me.state=body.state; S.me.city=body.city; }
     await loadListings(); loadMine(); loadActivity(); toast(isNew?"Your listing is live":"Listing updated"); location.hash="item-"+id;
-  }catch(e){ S.busy=false; S.draftErr=e.message; if(e.status===401) goSignIn(); render(); }
+  }catch(e){ S.busy=false; S.draftErr=e.message; if(e.status===401) goSignIn(); else if(e.code==="verify_required") goVerify(); else if(e.code==="terms_required") termsDialog(); render(); }
 }
 async function setStatus(id, s){
   try{ await api("PATCH",`/api/listings/${encodeURIComponent(id)}/status`,{status:s}); await loadListings(); loadMine(); render(true);
@@ -1405,7 +1636,7 @@ document.addEventListener("click", async e => {
     case "offerClose": S.offerOpen=false; render(true); break;
     case "offerPreset": S.offerAmt=t.dataset.v; { const i=$("#offerAmt"); if(i) i.value=t.dataset.v; } break;
     case "authMode": S.authMode=S.authMode==="up"?"in":"up"; S.authErr=""; render(); break;
-    case "logout": try{ await api("POST","/api/auth/logout"); }catch(err){} S.me=null; S.threads=[]; S.saved=new Set(); S.mine=null; S.searches=[]; S.msgTid=null; S.menuOpen=false; toast("Signed out"); location.hash="home"; render(); break;
+    case "logout": try{ await api("POST","/api/auth/logout"); }catch(err){} S.me=null; S.threads=[]; S.saved=new Set(); S.mine=null; S.searches=[]; S.sessions=null; S.blocks=null; S.admin={}; S.msgTid=null; S.menuOpen=false; toast("Signed out"); location.hash="home"; render(); break;
     case "save": { e.stopPropagation(); if(!S.me) return goSignIn(); const id=t.dataset.id; const on=!S.saved.has(id); on?S.saved.add(id):S.saved.delete(id); render(true); toast(on?"Saved":"Removed from saved");
       try{ await api(on?"PUT":"DELETE",`/api/saved/${encodeURIComponent(id)}`); }catch(err){ fail(err); } break; }
     case "saveSearch": saveSearchDialog(); break;
@@ -1428,6 +1659,25 @@ document.addEventListener("click", async e => {
     case "rmPhoto": S.draft.photos.splice(Number(t.dataset.i),1); S.draftErr=""; saveDraftLocal(); render(true); break;
     case "movePhoto": { const i=Number(t.dataset.i), j=i+Number(t.dataset.d), p=S.draft.photos; [p[i],p[j]]=[p[j],p[i]]; saveDraftLocal(); render(true); break; }
     case "clearDraft": lsSet(draftKey(S.draft),null); S.draft=null; render(); break;
+    case "termsDlg": termsDialog(); break;
+    case "verifyDone": S.verifyState=""; S.next=""; break;
+    case "resendCode": try{ await api("POST","/api/auth/verify/resend"); S.resendAt=Date.now()+60000; S.verifyErr=""; toast("New code sent to "+S.me.email); render(true); const tick=setInterval(()=>{ if(S.route!=="verify"||Date.now()>S.resendAt){ clearInterval(tick); } if(S.route==="verify") render(true); },1000); }catch(err){ S.verifyErr=err.message; render(true); } break;
+    case "toc": { e.preventDefault(); const el=document.getElementById("sec-"+t.dataset.i); el&&el.scrollIntoView({behavior:"smooth",block:"start"}); break; }
+    case "pwDlg": pwDialog(); break;
+    case "emailDlg": emailDialog(); break;
+    case "deleteDlg": deleteDialog(); break;
+    case "revokeOthers": try{ const r=await api("POST","/api/me/sessions/revoke-others"); toast(`Signed out of ${r.signedOut} other ${r.signedOut===1?"device":"devices"}`); loadSecurity(); }catch(err){ fail(err); } break;
+    case "convoMenu": convoMenuDialog(t.dataset.id, t.dataset.name, t.dataset.blocked==="1"); break;
+    case "askBlock": blockDialog(t.dataset.id, t.dataset.name); break;
+    case "block": try{ await api("PUT",`/api/blocks/${encodeURIComponent(t.dataset.id)}`); closeDialog(); toast("Blocked. They can't message you."); await loadThreads(); render(true); }catch(err){ closeDialog(); fail(err); } break;
+    case "unblock": try{ await api("DELETE",`/api/blocks/${encodeURIComponent(t.dataset.id)}`); closeDialog(); toast("Unblocked"); await loadThreads(); if(S.route==="account") loadSecurity(); render(true); }catch(err){ fail(err); } break;
+    case "reportMember": reportMemberDialog(t.dataset.id, t.dataset.name); break;
+    case "adminTab": S.adminTab=t.dataset.k; render(true); loadAdmin(); break;
+    case "adminRefresh": loadAdmin(); toast("Refreshed"); break;
+    case "modDlg": modDialog(t.dataset.kind, t.dataset.id, t.dataset.name); break;
+    case "modReport": try{ await api("POST",`/api/admin/reports/${encodeURIComponent(t.dataset.id)}`,{action:t.dataset.a}); toast(t.dataset.a==="dismiss"?"Report dismissed":"Report resolved"); loadAdmin(); }catch(err){ fail(err); } break;
+    case "modReinstate": try{ await api("POST",`/api/admin/users/${encodeURIComponent(t.dataset.id)}/reinstate`); toast("Member reinstated"); loadAdmin(); loadListings(); }catch(err){ fail(err); } break;
+    case "modRestore": try{ await api("POST",`/api/admin/listings/${encodeURIComponent(t.dataset.id)}/restore`); toast("Listing restored"); loadAdmin(); loadListings(); }catch(err){ fail(err); } break;
   }
 });
 document.addEventListener("keydown", e => {
@@ -1448,6 +1698,25 @@ document.addEventListener("submit", async e => {
   if(kind==="sell") return saveListing();
   if(kind==="saveSearch"){ const name=$("#ssName").value.trim(); try{ const x=await api("POST","/api/searches",{name, query:shopHash()}); S.searches=[x, ...S.searches.filter(y=>y.id!==x.id)]; closeDialog(); toast("Search saved. Find it under Saved."); render(true); }catch(err){ closeDialog(); fail(err); } return; }
   if(kind==="locPrompt"){ const st=$("#lpState").value; if(!st) return toast("Choose your state first"); setLoc(st,""); lsSet("as_locprompt_done",true); toast(`Showing listings near ${STATES[st]}`); render(); return; }
+  if(kind==="acceptTerms"){ if(!$("#tAccept").checked) return toast("Tick the box to accept"); try{ S.me=await api("POST","/api/me/accept-terms",{accept:true}); closeDialog(); toast("Thanks. You're all set."); render(true); }catch(err){ closeDialog(); fail(err); } return; }
+  if(kind==="verify"){ const code=$("#vcode").value.replace(/\D/g,""); if(code.length!==6){ S.verifyErr="Enter all 6 digits from the email."; render(true); return; }
+    S.busy=true; S.verifyErr=""; render(true);
+    try{ S.me=await api("POST","/api/auth/verify",{code}); S.busy=false; S.verifyState="done"; toast("Email verified"); }catch(err){ S.busy=false; S.verifyErr=err.message; }
+    render(); return; }
+  if(kind==="forgot"){ const email=$("#femail").value; S.busy=true; S.authErr=""; render(true);
+    try{ const r=await api("POST","/api/auth/forgot",{email}); S.forgotMsg=r.message; }catch(err){ S.authErr=err.message; }
+    S.busy=false; render(); return; }
+  if(kind==="reset"){ const a=$("#rpass").value, b=$("#rpass2").value; if(a!==b){ S.authErr="The two passwords don't match."; render(true); return; }
+    S.busy=true; S.authErr=""; render(true);
+    try{ S.me=await api("POST","/api/auth/reset",{token:S.resetTok,password:a}); S.resetTok=""; S.busy=false; toast("Password changed. You're signed in."); loadThreads(); loadSaved(); loadMine(); loadSearches(); location.hash="home"; }
+    catch(err){ S.busy=false; S.authErr=err.message; } render(); return; }
+  if(kind==="pwChange"){ try{ const r=await api("POST","/api/me/password",{current:$("#pwCur").value,password:$("#pwNew").value}); closeDialog(); toast(r.signedOut?`Password changed. ${r.signedOut} other ${r.signedOut===1?"device was":"devices were"} signed out.`:"Password changed"); loadSecurity(); }catch(err){ dlgErr(err.message); } return; }
+  if(kind==="emailChange"){ try{ S.me=await api("POST","/api/me/email",{email:$("#emNew").value,password:$("#emPw").value}); closeDialog(); render(true); if(needsVerify()){ S.resendAt=Date.now()+30000; location.hash="verify"; toast("Check your new inbox for a code"); } else toast("Email changed"); }catch(err){ dlgErr(err.message); } return; }
+  if(kind==="deleteAcct"){ try{ await api("DELETE","/api/me",{password:$("#delPw").value,confirm:$("#delConfirm").value.trim()}); closeDialog(); S.me=null; S.threads=[]; S.saved=new Set(); S.mine=null; S.searches=[]; toast("Your account was deleted"); location.hash="home"; loadListings(); loadActivity(); render(); }catch(err){ dlgErr(err.message); } return; }
+  if(kind==="reportMember"){ const reason=(form.querySelector("input[name=reason]:checked")||{}).value; try{ await api("POST",`/api/users/${encodeURIComponent(form.dataset.id)}/report`,{reason,note:$("#repNote").value}); closeDialog(); toast("Thanks. Our moderators will look into it."); }catch(err){ closeDialog(); fail(err); } return; }
+  if(kind==="admSearch"){ S.admin.q=$("#admQ").value.trim(); loadAdmin(); return; }
+  if(kind==="modAction"){ const reason=$("#modReason").value.trim(), id=form.dataset.id, k=form.dataset.kind;
+    try{ await api("POST", k==="remove"?`/api/admin/listings/${encodeURIComponent(id)}/remove`:`/api/admin/users/${encodeURIComponent(id)}/suspend`, {reason}); closeDialog(); toast(k==="remove"?"Listing removed":"Member suspended"); loadAdmin(); loadListings(); }catch(err){ dlgErr(err.message); } return; }
   if(kind==="report"){ const reason=(form.querySelector("input[name=reason]:checked")||{}).value; try{ await api("POST",`/api/listings/${encodeURIComponent(form.dataset.id)}/report`,{reason,note:$("#repNote").value}); closeDialog(); toast("Thanks. We'll review this listing."); }catch(err){ closeDialog(); fail(err); } return; }
   if(kind==="account"){
     S.busy=true; S.acctMsg=""; render();
@@ -1456,11 +1725,19 @@ document.addEventListener("submit", async e => {
   }
   if(kind==="auth"){
     const up=S.authMode==="up";
-    const body={email:$("#aemail").value, password:$("#apass").value}; if(up){ body.name=$("#aname").value; body.state=$("#astate").value; body.city=$("#acity").value; }
+    const body={email:$("#aemail").value, password:$("#apass").value};
+    // keep what they typed if the form re-renders with an error (never the password)
+    S.authForm = up ? {email:body.email, name:$("#aname").value, state:$("#astate").value, city:$("#acity").value, terms:$("#aterms").checked} : {email:body.email};
+    if(up){ body.name=$("#aname").value; body.state=$("#astate").value; body.city=$("#acity").value; body.acceptTerms=$("#aterms").checked; if(!body.acceptTerms){ // say so in place, without re-rendering, so nothing they typed is lost
+      let er=form.querySelector(".err"); if(!er){ er=document.createElement("p"); er.className="err"; er.setAttribute("role","alert"); form.querySelector("button[type=submit]").before(er); }
+      er.textContent="Confirm that you're 18 or older and agree to the Terms to create an account."; $("#aterms").focus(); return; } }
     S.busy=true; S.authErr=""; render();
     try{ S.me=await api("POST", up?"/api/auth/register":"/api/auth/login", body); S.busy=false; toast(up?"Welcome to Hinova Marketplace":"Signed in");
       if(S.me.state && !S.loc.state) setLoc(S.me.state,S.me.city);
-      loadThreads(); loadSaved(); loadMine(); loadActivity(); loadSearches(); location.hash = S.next && S.next!=="signin" ? S.next : "home"; render(); }
+      S.authForm={}; loadThreads(); loadSaved(); loadMine(); loadActivity(); loadSearches();
+      if(up && needsVerify()){ S.verifyErr=""; S.verifyState=""; S.resendAt=Date.now()+30000; location.hash="verify"; if(S.me.mailSent===false) toast("We couldn't send the code just now. Tap “send a new code”."); else toast("Check your email for a 6-digit code"); }
+      else location.hash = S.next && !/^(signin|verify|forgot|reset)/.test(S.next) ? S.next : "home";
+      render(); }
     catch(err){ S.busy=false; S.authErr=err.message; render(); }
     return;
   }
@@ -1503,6 +1780,7 @@ document.addEventListener("change", e => {
     if(el.id==="fState"){ setLoc(el.value,""); render(); syncShopHash(); }
     if(el.id==="fCity"){ setLoc(S.loc.state, el.value.trim()); render(); syncShopHash(); }
   }
+  if(el.id==="admClosed"){ S.admin.closed=el.checked; S.admin.reports=null; render(true); loadAdmin(); return; }
   if(el.id==="photoIn" && el.files.length){ addPhotos(el.files); el.value=""; return; }
   if(S.draft && el.closest('[data-form="sell"]')){
     const d=S.draft;
@@ -1556,7 +1834,8 @@ $("#dlg").addEventListener("click", e => { if(e.target.id==="dlg") closeDialog()
 initViewer(); initGallerySwipe();
 (async () => {
   paintChrome();
-  try{ S.me = await api("GET","/api/me"); }catch(e){}
+  const [cfg, me] = await Promise.all([api("GET","/api/config").catch(()=>null), api("GET","/api/me").catch(()=>null)]);
+  if(cfg) S.cfg=cfg; S.me=me;
   if(S.me && S.me.state && !lsGet("as_loc",null)) setLoc(S.me.state, S.me.city);
   route();
   loadActivity();

@@ -1,6 +1,6 @@
 {
   "name": "hinova-marketplace",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "Hinova Marketplace: buy and sell used Apple devices and Teslas with local pickup across the US",
   "main": "server.js",
   "scripts": {
