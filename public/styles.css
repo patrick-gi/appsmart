@@ -905,3 +905,51 @@ main{animation:pagein .22s ease-out}
 @media (max-width:720px){ .arow{grid-template-columns:1fr} }
 .footbar a{color:inherit}
 .secrow.col>div{flex:none}
+
+/* ---------- v9: trust badges, ratings, price guide, safety, install ---------- */
+.tbadges{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.tb{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--ink);white-space:nowrap}
+.tb svg{width:13px;height:13px}
+.tb.ok{background:var(--ok-soft);color:var(--ok)}
+.tb.gold{background:#FFF4D1;color:#8A5A00}
+.tb.rate{background:var(--accent-soft);color:var(--accent)}
+.tb .muted{font-weight:500}
+.ratecard{display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:var(--surface);border:1.5px solid var(--accent);border-radius:var(--r);padding:12px 14px;margin:14px 0 4px;box-shadow:var(--sh-1)}
+.ratecard .tthumb{width:52px;height:52px;border-radius:12px;overflow:hidden;background:var(--surface-2);display:grid;place-items:center;flex:none}
+.ratecard .tthumb img{width:100%;height:100%;object-fit:cover}
+.ratecard .tthumb svg{width:28px;height:28px}
+.ratecard .grow{flex:1 1 200px;min-width:0}
+.thumbbtn{width:44px;height:40px;padding:0}
+.thumbbtn svg{width:18px;height:18px;color:var(--ok)}
+.thumbbtn.down svg{transform:rotate(180deg);color:var(--bad)}
+.reviews{display:flex;flex-direction:column;gap:8px;margin-bottom:22px}
+.rev{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 14px;font-size:14.5px}
+.thumbic{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex:none}
+.thumbic.up{background:var(--ok-soft);color:var(--ok)}
+.thumbic.down{background:var(--bad-soft);color:var(--bad)}
+.thumbic.down svg{transform:rotate(180deg)}
+.estimate.guide{align-items:flex-start}
+.estimate.guide>div{display:flex;flex-direction:column;gap:2px;font-size:13.5px;font-weight:500}
+.estimate .sug{margin-top:4px}
+.phototips{background:var(--surface-2);border-radius:12px;padding:10px 14px;font-size:13.5px;margin-top:4px}
+.phototips summary{cursor:pointer;font-weight:600;display:flex;gap:8px;align-items:center;list-style:none}
+.phototips summary::-webkit-details-marker{display:none}
+.phototips summary::after{content:"+";margin-left:auto;font-weight:700;color:var(--muted)}
+.phototips[open] summary::after{content:"–"}
+.phototips ul{margin:8px 0 4px;padding-left:20px}
+.phototips p{margin:4px 0 0;font-size:12.5px}
+.safegrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.safe{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;gap:6px}
+.safe .ic{width:38px;height:38px;border-radius:12px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center}
+.safe .ic svg{width:18px;height:18px}
+.safe p{margin:0;font-size:13.5px;line-height:1.5}
+@media (max-width:900px){ .safegrid{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:520px){ .safegrid{grid-template-columns:1fr} }
+.newweek{display:inline-flex;vertical-align:middle;font-size:12.5px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent);margin-left:6px;letter-spacing:0}
+.secrow.toggle{cursor:pointer;flex-wrap:nowrap}
+.switch{appearance:none;-webkit-appearance:none;width:44px;height:26px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;flex:none;transition:background .15s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .15s}
+.switch:checked{background:var(--accent)}
+.switch:checked::after{transform:translateX(18px)}
+.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.notice.plain a{color:var(--accent);font-weight:600}

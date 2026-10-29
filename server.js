@@ -6,6 +6,8 @@ const { Pool } = require("pg");
 const US = require("./public/us.js");
 const EV = require("./public/ev.js");
 const MAIL = require("./mailer");
+let G = null; // growth features (alerts, ratings, previews), set up once routes exist
+const later = (p) => p && p.catch && p.catch((e) => console.error("background task failed:", e.message));
 
 const PORT = process.env.PORT || 3000;
 const PROD = process.env.NODE_ENV === "production";
@@ -196,6 +198,40 @@ async function migrate() {
     );
     CREATE INDEX IF NOT EXISTS audit_at ON audit_log(at DESC);
   `);
+  await q(`
+    -- v9: alerts, ratings, founding sellers, thumbnails, seller reminders
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_messages  BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_offers    BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_searches  BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_price     BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_reminders BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS unsub_token      TEXT UNIQUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS founding         BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE photos ADD COLUMN IF NOT EXISTS thumb BYTEA;
+    ALTER TABLE listings ADD COLUMN IF NOT EXISTS nudged_at TIMESTAMPTZ;
+    CREATE TABLE IF NOT EXISTS alert_log (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      key     TEXT NOT NULL,
+      at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, key)
+    );
+    CREATE TABLE IF NOT EXISTS ratings (
+      id            TEXT PRIMARY KEY,
+      listing_id    TEXT NOT NULL,
+      listing_title TEXT NOT NULL DEFAULT '',
+      rater_id      TEXT REFERENCES users(id) ON DELETE SET NULL,
+      ratee_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      ratee_role    TEXT NOT NULL,
+      positive      BOOLEAN NOT NULL,
+      comment       TEXT NOT NULL DEFAULT '',
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (listing_id, rater_id)
+    );
+    CREATE INDEX IF NOT EXISTS ratings_ratee ON ratings(ratee_id, created_at DESC);
+  `);
+  // the first 100 people to list something are founding sellers (backfilled once)
+  await q(`UPDATE users SET founding = true WHERE NOT EXISTS (SELECT 1 FROM users WHERE founding)
+           AND id IN (SELECT seller_id FROM listings GROUP BY seller_id ORDER BY min(created_at) LIMIT 100)`);
   // listing reports also record the seller, so moderators see every report against a member
   await q(`UPDATE reports r SET user_id = l.seller_id FROM listings l WHERE r.listing_id = l.id AND r.user_id IS NULL`);
   await cleanup();
@@ -205,6 +241,7 @@ async function cleanup() {
   await q(`DELETE FROM sessions WHERE expires_at < now() OR last_seen_at < now() - interval '30 days'`);
   await q(`DELETE FROM email_tokens WHERE expires_at < now() - interval '1 day'`);
   await q(`DELETE FROM audit_log WHERE at < now() - interval '365 days'`);
+  await q(`DELETE FROM alert_log WHERE at < now() - interval '30 days'`);
 }
 setInterval(() => cleanup().catch((e) => console.error("cleanup", e.message)), 60 * 60e3).unref();
 
@@ -292,6 +329,7 @@ function listingOut(r, viewer) {
     checks: r.checks || [], status: r.status, reservedFor: r.reserved_for, agreedPrice: r.agreed_price, views: r.views,
     createdAt: ms(r.created_at), updatedAt: ms(r.updated_at),
     ...(r.removed_at ? { removed: true, removedReason: r.removed_reason } : {}),
+    ...(r.seller_ratings !== undefined ? { seller: { verified: !!r.seller_verified, founding: !!r.seller_founding, since: ms(r.seller_since), up: r.seller_up, ratings: r.seller_ratings } } : {}),
     ...(r.thread_count !== undefined ? { threadCount: Number(r.thread_count), saveCount: Number(r.save_count) } : {}),
   };
 }
@@ -792,7 +830,9 @@ app.get("/api/users/:id", wrap(async (req, res) => {
   const u = r.rows[0];
   if (!u) throw new HttpError(404, "That seller's account no longer exists.");
   const c = await q(`SELECT count(*) FILTER (WHERE status='active') active, count(*) FILTER (WHERE status='sold') sold FROM listings WHERE seller_id=$1 AND removed_at IS NULL`, [u.id]);
-  res.json({ id: u.id, name: u.name, city: u.city, state: u.state, createdAt: ms(u.created_at), active: Number(c.rows[0].active), sold: Number(c.rows[0].sold) });
+  const x = (await q(`SELECT email_verified_at, founding FROM users WHERE id = $1`, [u.id])).rows[0];
+  res.json({ id: u.id, name: u.name, city: u.city, state: u.state, createdAt: ms(u.created_at), active: Number(c.rows[0].active), sold: Number(c.rows[0].sold),
+    verified: !!x.email_verified_at, founding: !!x.founding, rating: await G.ratingSummary(u.id) });
 }));
 
 /* community activity: real joins, new listings and sales, newest first */
@@ -836,7 +876,10 @@ app.get("/api/activity", wrap(async (req, res) => {
 }));
 
 /* listings */
-const LISTING_SELECT = `SELECT l.*, u.name AS seller_name FROM listings l JOIN users u ON u.id = l.seller_id`;
+const LISTING_SELECT = `SELECT l.*, u.name AS seller_name, u.email_verified_at AS seller_verified, u.founding AS seller_founding, u.created_at AS seller_since,
+  (SELECT count(*) FILTER (WHERE r.positive)::int FROM ratings r WHERE r.ratee_id = u.id) AS seller_up,
+  (SELECT count(*)::int FROM ratings r WHERE r.ratee_id = u.id) AS seller_ratings
+  FROM listings l JOIN users u ON u.id = l.seller_id`;
 // what the public sees: not removed by moderators, and the seller isn't suspended
 const PUBLIC_LISTING = `l.removed_at IS NULL AND u.status = 'active'`;
 app.get("/api/listings", wrap(async (req, res) => {
@@ -896,7 +939,9 @@ app.post("/api/listings", wrap(async (req, res) => {
   // remember the seller's location for next time if they haven't set one
   if (!u.state) await q(`UPDATE users SET city=$2, state=$3 WHERE id=$1`, [u.id, v.city, v.state]);
   activityCache = null;
+  await q(`UPDATE users SET founding = true WHERE id = $1 AND NOT founding AND (SELECT count(*) FROM users WHERE founding) < 100`, [u.id]);
   await audit(req, "listing.created", "listing", id, { title: v.title, price: v.price });
+  later(G.onListingCreated(id));
   res.status(201).json({ id });
 }));
 async function ownListing(u, id, opts = {}) {
@@ -918,6 +963,7 @@ app.put("/api/listings/:id", wrap(async (req, res) => {
   await q(`UPDATE listings SET title=$2, cat=$3, storage=$4, grade=$5, battery=$6, lock_off=$7, price=$8, city=$9, state=$10, descr=$11, photos=$12,
              orig_price=$13, checks=$14, specs=$15, updated_at=now() WHERE id=$1`,
     [req.params.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.city, v.state, v.desc, photos, origPrice, v.checks, JSON.stringify(v.specs)]);
+  if (v.price < old.price) later(G.onPriceDrop(old.id, old.price, v.price));
   const dropped = old.photos.filter((p) => !photos.includes(p));
   if (dropped.length) await q(`DELETE FROM photos WHERE owner_id=$1 AND id = ANY($2)`, [u.id, dropped]);
   res.json({ ok: true });
@@ -928,6 +974,12 @@ app.patch("/api/listings/:id/status", wrap(async (req, res) => {
   const s = req.body.status;
   if (!STATUSES.includes(s)) throw new HttpError(400, "Unknown status.");
   if (s === "active") await q(`UPDATE listings SET status='active', reserved_for=NULL, agreed_price=NULL, updated_at=now() WHERE id=$1`, [req.params.id]);
+  else if (s === "sold" && req.body.buyerId) {
+    // "who bought it?" must be someone who messaged about this listing
+    const t = (await q(`SELECT 1 FROM threads WHERE listing_id = $1 AND buyer_id = $2`, [req.params.id, String(req.body.buyerId)])).rows[0];
+    if (!t) throw new HttpError(400, "Pick a buyer who messaged you about this listing.");
+    await q(`UPDATE listings SET status='sold', reserved_for=$2, updated_at=now() WHERE id=$1`, [req.params.id, String(req.body.buyerId)]);
+  }
   else await q(`UPDATE listings SET status=$2, updated_at=now() WHERE id=$1`, [req.params.id, s]);
   activityCache = null;
   res.json({ ok: true });
@@ -979,14 +1031,19 @@ app.post("/api/photos", wrap(async (req, res) => {
   const sig = bytes.subarray(0, 12).toString("hex");
   const okSig = sig.startsWith("ffd8ff") || sig.startsWith("89504e47") || (sig.startsWith("52494646") && sig.slice(16, 24) === "57454250");
   if (!okSig) throw new HttpError(400, "That file isn't a valid image.");
+  let thumb = null;
+  const tm = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body.thumb || ""));
+  if (tm) { const tb = Buffer.from(tm[1], "base64"); if (tb.length < 300 * 1024 && tb.subarray(0, 3).toString("hex") === "ffd8ff") thumb = tb; }
   const id = newId("P");
-  await q(`INSERT INTO photos (id, owner_id, mime, bytes) VALUES ($1,$2,$3,$4)`, [id, u.id, m[1], bytes]);
+  await q(`INSERT INTO photos (id, owner_id, mime, bytes, thumb) VALUES ($1,$2,$3,$4,$5)`, [id, u.id, m[1], bytes, thumb]);
   res.status(201).json({ id });
 }));
 app.get("/api/photos/:id", wrap(async (req, res) => {
-  const r = await q(`SELECT mime, bytes FROM photos WHERE id = $1`, [req.params.id]);
+  const small = req.query.s === "t";
+  const r = await q(`SELECT mime, ${small ? "COALESCE(thumb, bytes) AS bytes, (thumb IS NOT NULL) AS is_thumb" : "bytes, false AS is_thumb"} FROM photos WHERE id = $1`, [req.params.id]);
   if (!r.rows[0]) return res.status(404).end();
-  res.setHeader("Content-Type", r.rows[0].mime);
+  res.setHeader("Content-Type", r.rows[0].is_thumb ? "image/jpeg" : r.rows[0].mime);
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin"); // listing photos are public; lets link previews and mail apps load them
   res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
   res.setHeader("Content-Disposition", "inline");
   res.end(r.rows[0].bytes);
@@ -1036,6 +1093,7 @@ async function addMessage(t, fromId, kind, text, amount) {
   await q(`INSERT INTO messages (thread_id, from_id, kind, text, amount) VALUES ($1,$2,$3,$4,$5)`, [t.id, fromId, kind, text, amount]);
   const last = kind === "offer" ? `Offer $${amount}` : text.slice(0, 80);
   await q(`UPDATE threads SET last=$2, last_from=$3, updated_at=now() WHERE id=$1`, [t.id, last, fromId]);
+  if (G) later(G.onMessage(t, fromId, kind, text, amount));
 }
 function parseMsg(b) {
   const kind = b.kind === "offer" ? "offer" : "text";
@@ -1144,10 +1202,13 @@ app.delete("/api/saved/:id", wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+G = require("./growth")({ app, q, wrap, needUser, needMember, HttpError, audit, str, ms, MAIL, APP_URL, US, EV, limit, newId, PROD });
 require("./admin")({ app, q, wrap, needAdmin, HttpError, audit, str, ms, listingOut, LISTING_SELECT, MAIL, notify, ADMIN_EMAILS, isAdmin, clearActivity: () => { activityCache = null; } });
 // local development only: read the in-memory outbox (never available in production)
 if (!PROD && process.env.DEV_MAIL === "1") app.get("/api/dev/outbox", (req, res) => res.json(MAIL.outbox.filter((m) => !req.query.to || m.to === String(req.query.to).toLowerCase())));
 
+// the service worker must always be fresh so app updates reach installed users
+app.get("/sw.js", (req, res) => { res.setHeader("Cache-Control", "no-cache"); res.setHeader("Service-Worker-Allowed", "/"); res.sendFile(path.join(__dirname, "public", "sw.js")); });
 app.get("/healthz", wrap(async (req, res) => { await q("SELECT 1"); res.send("ok"); }));
 app.use("/api", (req, res) => res.status(404).json({ error: "Not found." }));
 app.use(express.static(path.join(__dirname, "public"), { maxAge: "5m" }));

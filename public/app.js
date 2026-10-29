@@ -70,6 +70,8 @@ const I = {
   phone:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 5.5h2"/></svg>',
   unlock:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>',
   okc:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  thumb:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M7 11v9H4v-9zM7 11l4-8c1.7 0 3 1.3 3 3v3h5a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.8 20H7"/></svg>',
+  star:'<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>',
   shield:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/></svg>'
 };
 
@@ -80,7 +82,7 @@ const S = {
   route:"home", param:"", activeThread:null, msgs:[], msgTid:null, photoIx:0,
   draft:null, draftErr:"", busy:false, uploading:0, railOpen:false, menuOpen:false, allStates:false,
   mineTab:"active", searches:[], savedTab:"devices", store:"apple", lastStore:"apple", sellStore:"apple", activity:null, seenEvents:null, sellers:{}, pending:[], msgDraft:{}, offerOpen:false, offerAmt:"", inboxTab:"all", threadsLoaded:false, authMode:"in", authErr:"", next:"", acctMsg:"",
-  cfg:{verifyRequired:false, mailEnabled:false}, sessions:null, blocks:null, admin:{}, adminTab:"reports", verifyState:"", verifyErr:"", resendAt:0, forgotMsg:"", resetTok:"", authForm:{}
+  cfg:{verifyRequired:false, mailEnabled:false}, sessions:null, blocks:null, admin:{}, adminTab:"reports", verifyState:"", verifyErr:"", resendAt:0, forgotMsg:"", resetTok:"", authForm:{}, pendingRatings:[], alerts:null
 };
 
 /* ---------- api ---------- */
@@ -163,7 +165,7 @@ function cardHTML(l, opts={}){
   const st = l.status!=="active" ? `<span class="status ${l.status}">${l.status==="sold"?"Sold":"Reserved"}</span>` : (l.origPrice && l.origPrice>l.price ? `<span class="status drop">Price drop</span>` : "<span></span>");
   const heart = (!opts.preview) ? `<button class="heart" data-act="save" data-id="${esc(l.id)}" aria-pressed="${S.saved.has(l.id)}" aria-label="${S.saved.has(l.id)?"Remove from saved":"Save listing"}">${I.heart}</button>` : "";
   const p=(l.photos||[])[0];
-  const ph = opts.previewSrc ? `<img src="${esc(opts.previewSrc)}" alt="">` : p ? `<img src="${esc(photoSrc(p))}" alt="" loading="lazy">` : (ICON[l.cat]||ICON.other);
+  const ph = opts.previewSrc ? `<img src="${esc(opts.previewSrc)}" alt="">` : p ? `<img src="${esc(photoThumb(p))}" alt="" loading="lazy">` : (ICON[l.cat]||ICON.other);
   const hasBatt = l.battery!=null && l.battery!=="";
   return `<article class="card" ${opts.preview?"":`data-go="item-${esc(l.id)}" tabindex="0" role="link"`} aria-label="${esc(l.title)}, ${money(l.price)}">
     <div class="ph">${ph}<div class="over">${st}${heart}</div><span class="ptag">${money(l.price)}${l.origPrice&&l.origPrice>l.price?`<s>${money(l.origPrice)}</s>`:""}</span></div>
@@ -193,7 +195,7 @@ function eventHTML(e, fresh){
     icon = e.userId ? avatar(e.userId, e.name, 38) : `<span class="evic">${I.plus}</span>`;
     text = `${who} joined the community${place?` from ${place}`:""}`;
   } else {
-    const th = `<span class="evthumb">${e.photo?`<img src="${esc(photoSrc(e.photo))}" alt="" loading="lazy">`:(ICON[e.cat]||ICON.other).replace('width="64" height="64"','width="22" height="22"')}</span>`;
+    const th = `<span class="evthumb">${e.photo?`<img src="${esc(photoThumb(e.photo))}" alt="" loading="lazy">`:(ICON[e.cat]||ICON.other).replace('width="64" height="64"','width="22" height="22"')}</span>`;
     icon = th;
     const item = `<a href="#item-${esc(e.listingId)}"><b>${esc(shortTitle(e.title))}</b></a>`;
     text = e.type==="listed" ? `${who} listed ${item}${place?` in ${place}`:""}<span class="evprice">${money(e.price)}</span>`
@@ -245,10 +247,10 @@ function viewHome(){
   const catCount = k => live.filter(l=>l.cat===k && inLoc(l)).length;
   const popular = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).slice(0,4);
   return `
-  ${locPrompt()}${welcomeChecklist()}
+  ${locPrompt()}${welcomeChecklist()}${pendingCard()}
   <section class="hero"><div class="wrap herogrid">
     <div>
-      <div class="eyebrow">Used Apple devices · Local pickup in all 50 states</div>
+      <div class="eyebrow">Used Apple and Tesla, checked before you meet</div>
       <h1>Buy and sell used Apple gear <em>near you.</em></h1>
       <p class="lede">Every listing shows battery health, condition and Activation Lock status, so you know what you're getting before you meet.</p>
       <form class="bigsearch" data-form="heroSearch" role="search">
@@ -284,7 +286,7 @@ function viewHome(){
   </div></section>
 
   <section class="section"><div class="wrap">
-    <div class="sechead"><h2>${esc(freshTitle)}</h2><a class="btn sm" href="#shop">See all</a></div>
+    <div class="sechead"><h2>${esc(freshTitle)} ${weekCount("apple")}</h2><a class="btn sm" href="#shop">See all</a></div>
     ${!S.loaded ? `<div class="grid">${skeletons(4)}</div>` : fresh.length ? `<div class="grid">${fresh.map(l=>cardHTML(l)).join("")}</div>`
       : `<div class="empty"><div class="ic">${ICON.iphone.replace('width="64" height="64"','width="36" height="36"')}</div><h2>Be the first to list in ${esc(locLabel())}</h2><p class="muted">Post a used iPhone, iPad, Mac, Watch or AirPods in about two minutes. Buyers nearby will see it right away.</p><a class="btn primary" href="#sell">Sell a device</a></div>`}
   </div></section>
@@ -302,7 +304,8 @@ function viewHome(){
       <div class="step"><h3>Chat and agree a price</h3><p>Buyers message you or send an offer. Accept one and the device is reserved for them.</p></div>
       <div class="step"><h3>Meet and pay in person</h3><p>Meet somewhere public. The buyer checks it works and is signed out of Find My, then pays you.</p></div>
     </div>
-  </div></section>`;
+  </div></section>
+  ${safeSection("apple")}`;
 }
 
 /* ---------- Tesla storefront ---------- */
@@ -390,7 +393,7 @@ function viewEvHome(){
     </div>
   </div></section>
 
-  ${communityHTML("ev")}
+  ${pendingCard()}${communityHTML("ev")}
   ${recentRail("ev")}
 
   <section class="section"><div class="wrap">
@@ -399,7 +402,7 @@ function viewEvHome(){
   </div></section>
 
   <section class="section"><div class="wrap">
-    <div class="sechead"><h2>${esc(freshTitle)}</h2><a class="btn sm" href="#shop?store=ev">See all</a></div>
+    <div class="sechead"><h2>${esc(freshTitle)} ${weekCount("ev")}</h2><a class="btn sm" href="#shop?store=ev">See all</a></div>
     ${!S.loaded ? `<div class="grid">${skeletons(4)}</div>` : fresh.length ? `<div class="grid">${fresh.map(l=>cardHTML(l)).join("")}</div>`
       : `<div class="empty"><div class="ic">${EV_ICON_SM("modely")}</div><h2>Be the first to list in ${esc(locLabel())}</h2><p class="muted">List a used Tesla, a Wall Connector, wheels or accessories. Buyers nearby will see it right away.</p><a class="btn primary" href="#sell?store=ev">Sell a Tesla or Tesla gear</a></div>`}
   </div></section>
@@ -435,15 +438,13 @@ function evEstimate(d){
   let xs, label;
   if(EVD.isVehicle(d.cat)){
     const y=Number(d.specs.year); if(!y) return "";
-    xs=S.listings.filter(l=>storeOf(l)==="ev" && l.cat===d.cat && l.id!==d._for && l.status!=="sold" && Number((l.specs||{}).year)===y);
+    xs=S.listings.filter(l=>storeOf(l)==="ev" && l.cat===d.cat && l.id!==d._for && Number((l.specs||{}).year)===y);
     label=`${y} ${EVD.MODELS[d.cat].n}`;
   } else {
     const t=(d.title||"").toLowerCase().trim(); if(t.length<4) return "";
-    xs=S.listings.filter(l=>storeOf(l)==="ev" && l.cat===d.cat && l.id!==d._for && l.status!=="sold" && l.title.toLowerCase().startsWith(t)); label=d.title;
+    xs=S.listings.filter(l=>storeOf(l)==="ev" && l.cat===d.cat && l.id!==d._for && l.title.toLowerCase().startsWith(t)); label=d.title;
   }
-  const ps=xs.map(l=>l.price).sort((a,b)=>a-b);
-  if(ps.length<2) return "";
-  return `<div class="estimate">${I.trend}<span>Market estimate: ${money(ps[0])} – ${money(ps[ps.length-1])} for ${esc(label)} <span class="muted" style="font-weight:500">(${ps.length} listed)</span></span></div>`;
+  return priceGuide(xs.filter(l=>l.status!=="sold"), xs.filter(l=>l.status==="sold"), label);
 }
 const segRadios = (name, map, val) => `<div class="seg ${Object.keys(map).length>3?"seg4":""}" role="radiogroup">${Object.entries(map).map(([k,t])=>`<label><input type="radio" name="${name}" value="${k}" ${val===k?"checked":""}>${esc(t)}</label>`).join("")}</div>`;
 function storePick(cur){
@@ -482,7 +483,7 @@ function viewSellEv(editId){
             <div class="field"><label for="sp_owners">Owners</label><select id="sp_owners" name="sp_owners"><option value="">Not sure</option>${[1,2,3,4,5].map(n=>`<option value="${n}" ${String(sp.owners)===String(n)?"selected":""}>${n}${n===5?"+":""}</option>`).join("")}</select></div>
           </div>
           <div class="field"><span class="lbl">Autopilot package</span>${segRadios("sp_autopilot", EVD.AUTOPILOT, sp.autopilot||"none")}</div>
-          <div class="field"><label for="sp_vin">VIN <span class="muted" style="font-weight:400">(recommended)</span></label><input id="sp_vin" name="sp_vin" maxlength="17" placeholder="17 characters" value="${esc(sp.vin)}" autocomplete="off" style="font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em"><span class="hint">On the dashboard by the windshield, or in Controls → Software. Only signed-in members can see it.</span></div>
+          <div class="field"><label for="sp_vin">VIN <span class="muted" style="font-weight:400">(recommended)</span></label><input id="sp_vin" name="sp_vin" maxlength="17" placeholder="17 characters" value="${esc(sp.vin)}" autocomplete="off" style="font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em"><span class="hint" id="vinNote">On the dashboard by the windshield, or in Controls → Software. We'll fill in the year, model and trim. Only signed-in members can see it.</span></div>
         </section>
         <section class="sbox" aria-labelledby="h-hist"><h2 id="h-hist">History &amp; Condition</h2>
           <div class="field"><span class="lbl">Title status</span>${segRadios("sp_title", EVD.TITLE, sp.title||"clean")}</div>
@@ -511,6 +512,7 @@ function viewSellEv(editId){
           <div class="bh"><h2 id="h-ph">Photos</h2><span class="note">${d.photos.length} of 8 uploaded</span></div>
           <div class="slots" id="photoGrid">${photoSlotsHTML(d)}</div>
           <input id="photoIn" type="file" accept="image/*" multiple hidden>
+          ${photoTips(d)}
           <p class="note">${veh?"Front three-quarter, both sides, interior, and the screen showing mileage and range. Show any damage clearly. Cover your licence plate if you prefer.":"Show the item, its connectors or fittings, and any wear. Drag to reorder; the first photo is the primary."}</p>
         </section>
         ${details}
@@ -681,10 +683,10 @@ function initGallerySwipe(){
 }
 
 /* ---------- native share sheet, falling back to copy ---------- */
-async function shareLink(title){
-  const url=location.href;
+async function shareLink(title, url){
+  url = url || location.href;
   if(navigator.share){ try{ await navigator.share({title: title||document.title, text: title||"", url}); return; }catch(e){ if(e && e.name==="AbortError") return; } }
-  copyLink();
+  copyLink(url);
 }
 
 /* ---------- views: shop ---------- */
@@ -833,14 +835,14 @@ function convoHTML(t, l, opts={}){
       <a class="person" href="#seller-${esc(otherId)}">${avatar(otherId, otherName, 36)}<span><b>${esc(otherName||"Someone")}</b><span class="role">${seller?"Buyer":"Seller"}${l&&l.city?` · ${esc(l.city)}, ${esc(l.state)}`:""}</span></span></a>
       <button class="iconbtn convmenu" data-act="convoMenu" data-id="${esc(otherId)}" data-name="${esc(otherName||"")}" data-blocked="${t.blocked?1:0}" aria-label="Block or report ${esc(otherName||"member")}" title="Block or report"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
     </header>
-    <a class="convlisting" href="#item-${esc(lid)}"><span class="tthumb">${photo?`<img src="${esc(photoSrc(photo))}" alt="">`:(ICON[l?l.cat:"other"]||ICON.other)}</span><span class="grow"><b>${esc(title||"Listing")}</b><span>${money(price)}${status&&status!=="active"?` · <span class="status ${status}">${status}</span>`:""}</span></span>${I.right}</a>
+    <a class="convlisting" href="#item-${esc(lid)}"><span class="tthumb">${photo?`<img src="${esc(photoThumb(photo))}" alt="">`:(ICON[l?l.cat:"other"]||ICON.other)}</span><span class="grow"><b>${esc(title||"Listing")}</b><span>${money(price)}${status&&status!=="active"?` · <span class="status ${status}">${status}</span>`:""}</span></span>${I.right}</a>
     <div class="msgs2" id="msgs">${empty}${items}</div>
     <div class="convfoot">${composer}</div>
   </section>`;
 }
 function threadRow(t, cur){
   const selling=isMe(t.sellerId), on=selling?t.buyerName:t.sellerName;
-  return `<a class="th-i" href="#thread-${esc(t.id)}" aria-current="${t.id===cur}"><span class="tthumb">${t.listingPhoto?`<img src="${esc(photoSrc(t.listingPhoto))}" alt="">`:ICON.other}</span>
+  return `<a class="th-i" href="#thread-${esc(t.id)}" aria-current="${t.id===cur}"><span class="tthumb">${t.listingPhoto?`<img src="${esc(photoThumb(t.listingPhoto))}" alt="">`:ICON.other}</span>
     <span class="tx"><div class="r1"><b>${esc(on||"Someone")}</b><span class="muted">${ago(t.updatedAt)}</span></div><div class="r2">${esc(t.listingTitle)}</div><div class="r3 ${t.unread?"un":""}">${isMe(t.lastFrom)?"You: ":""}${esc(t.last)}</div></span>${t.unread&&t.id!==cur?'<span class="unreaddot" aria-label="Unread"></span>':""}</a>`;
 }
 function viewInbox(threadId){
@@ -906,7 +908,7 @@ function viewItem(id){
         ${photos.length>1?`<button class="gnav l" data-act="photo" data-i="${(ix-1+photos.length)%photos.length}" aria-label="Previous photo">${I.left}</button><button class="gnav r" data-act="photo" data-i="${(ix+1)%photos.length}" aria-label="Next photo">${I.right}</button><span class="gcount">${ix+1} / ${photos.length}</span>`:""}
         <div class="over">${l.status!=="active"?`<span class="status ${l.status}">${l.status==="sold"?"Sold":"Reserved"}</span>`:"<span></span>"}</div>
       </div>
-      ${photos.length>1?`<div class="thumbs">${photos.map((p,i)=>`<button data-act="photo" data-i="${i}" aria-current="${i===ix}" aria-label="Photo ${i+1}"><img src="${esc(p)}" alt=""></button>`).join("")}</div>`:""}
+      ${photos.length>1?`<div class="thumbs">${photos.map((p,i)=>`<button data-act="photo" data-i="${i}" aria-current="${i===ix}" aria-label="Photo ${i+1}"><img src="${esc(p)}?s=t" alt=""></button>`).join("")}</div>`:""}
     </div>
     <div class="side">
       <div><div class="eyebrow">${esc(catOf(l.cat).n)}${l.storage?" · "+esc(l.storage):""}</div><h1 style="margin-top:6px">${esc(l.title)}</h1></div>
@@ -914,13 +916,14 @@ function viewItem(id){
       <div class="locline">${I.pin}<span>Pickup in ${l.city?`<a href="#shop?state=${esc(l.state)}&city=${encodeURIComponent(l.city)}">${esc(l.city)}</a>, `:""}<a href="#shop?state=${esc(l.state)}">${esc(STATES[l.state]||l.state||"—")}</a></span></div>
       <div class="stats"><span>Listed ${ago(l.createdAt)}</span>${l.views?`<span>${I.eye}${l.views} ${l.views===1?"view":"views"}</span>`:""}</div>
       ${cta}
-      <a class="sellercard" href="#seller-${esc(l.sellerId)}">${avatar(l.sellerId,l.sellerName,42)}<span class="grow"><b>${esc(showName(l.sellerId,l.sellerName))}</b><span class="muted" style="display:block;font-size:13px">See all listings from this seller</span></span>${I.right}</a>
+      <a class="sellercard" href="#seller-${esc(l.sellerId)}">${avatar(l.sellerId,l.sellerName,42)}<span class="grow"><b>${esc(showName(l.sellerId,l.sellerName))}</b>${trustBadges(l.seller)||`<span class="muted" style="display:block;font-size:13px">See all listings from this seller</span>`}</span>${I.right}</a>
+      ${pendingCard(l.id)}
       ${actions}
-      <div class="actions">${!mine&&l.status!=="sold"?`<button class="btn sm" data-act="save" data-id="${esc(l.id)}" aria-pressed="${S.saved.has(l.id)}">${I.heart} ${S.saved.has(l.id)?"Saved":"Save"}</button>`:""}<button class="btn sm" data-act="share">${I.share} Copy link</button>${!mine?`<button class="btn sm ghost" data-act="report" data-id="${esc(l.id)}">${I.flag} Report</button>`:""}</div>
+      <div class="actions">${!mine&&l.status!=="sold"?`<button class="btn sm" data-act="save" data-id="${esc(l.id)}" aria-pressed="${S.saved.has(l.id)}">${I.heart} ${S.saved.has(l.id)?"Saved":"Save"}</button>`:""}<button class="btn sm" data-act="share">${I.share} Share</button>${!mine?`<button class="btn sm ghost" data-act="report" data-id="${esc(l.id)}">${I.flag} Report</button>`:""}</div>
       ${sheetHTML(l)}
       ${l.desc?`<div><div class="eyebrow" style="margin-bottom:6px">From the seller</div><p class="desc">${esc(l.desc)}</p></div>`:""}
       ${chat}
-      <div class="notice plain" style="font-size:13.5px">${I.shield}<span>${evVehicle(l)?"Meet in daylight somewhere public. Test drive it, check the VIN and title match the listing and the seller's ID, and never send money before you see the car.":storeOf(l)==="ev"?"Meet in a public place and check the item before you pay.":"Meet in a public place. Check it powers on, shows the battery health listed, and is signed out of Find My before you pay."}</span></div>
+      <div class="notice plain" style="font-size:13.5px">${I.shield}<span>${evVehicle(l)?"Meet in daylight somewhere public. Test drive it, check the VIN and title match the listing and the seller's ID, and never send money before you see the car.":storeOf(l)==="ev"?"Meet in a public place and check the item before you pay.":"Meet in a public place. Check it powers on, shows the battery health listed, and is signed out of Find My before you pay."} ${meetupLink(l)}</span></div>
     </div>
   </div>
   ${buybar}
@@ -964,12 +967,11 @@ function marketEstimate(d){
   if(d._store==="ev") return evEstimate(d);
   const model=(d.title||"").toLowerCase().replace(/,.*$/,"").trim();
   if(model.length<5) return "";
-  const xs=S.listings.filter(l=>l.cat===d.cat && l.id!==d._for && l.status!=="sold" && l.title.toLowerCase().startsWith(model) && (!d.storage||l.storage===d.storage) && l.grade===d.grade).map(l=>l.price).sort((a,b)=>a-b);
-  if(xs.length<2) return "";
-  return `<div class="estimate">${I.trend}<span>Market estimate: ${money(xs[0])} – ${money(xs[xs.length-1])} for ${esc(d.storage?d.storage+" ":"")}Grade ${esc(d.grade)} <span class="muted" style="font-weight:500">(${xs.length} listed)</span></span></div>`;
+  const same = l => l.cat===d.cat && l.id!==d._for && storeOf(l)==="apple" && l.title.toLowerCase().startsWith(model) && (!d.storage||l.storage===d.storage) && l.grade===d.grade;
+  return priceGuide(S.listings.filter(l=>same(l) && l.status!=="sold"), S.listings.filter(l=>same(l) && l.status==="sold"), `${d.storage?d.storage+" ":""}Grade ${d.grade}`);
 }
 function photoSlotsHTML(d){
-  const tiles = d.photos.map((p,i)=>`<div class="slot photo" draggable="true" data-i="${i}"><img src="${esc(photoSrc(p))}" alt="Photo ${i+1}">${i===0?'<span class="prim">Primary</span>':""}
+  const tiles = d.photos.map((p,i)=>`<div class="slot photo" draggable="true" data-i="${i}"><img src="${esc(photoThumb(p))}" alt="Photo ${i+1}">${i===0?'<span class="prim">Primary</span>':""}
       <span class="mv">${i>0?`<button type="button" data-act="movePhoto" data-i="${i}" data-d="-1" aria-label="Move photo ${i+1} earlier">‹</button>`:""}${i<d.photos.length-1?`<button type="button" data-act="movePhoto" data-i="${i}" data-d="1" aria-label="Move photo ${i+1} later">›</button>`:""}</span>
       <button type="button" class="rm" data-act="rmPhoto" data-i="${i}" aria-label="Remove photo ${i+1}">×</button></div>`);
   for(let i=0;i<S.uploading;i++) tiles.push(`<div class="slot busy"><span class="spin" aria-label="Uploading"></span></div>`);
@@ -1015,6 +1017,7 @@ function viewSell(editId){
           <div class="bh"><h2 id="h-ph">Photos</h2><span class="note">${d.photos.length} of 8 uploaded</span></div>
           <div class="slots" id="photoGrid">${photoSlotsHTML(d)}</div>
           <input id="photoIn" type="file" accept="image/*" multiple hidden>
+          ${photoTips(d)}
           <p class="note">Clear photos of corners, charging port, and screen with display ON speed up sales. Drag to reorder; the first photo is the primary.</p>
         </section>
 
@@ -1070,7 +1073,7 @@ function saveDraftLocal(){ if(S.draft && S.draft._for==="new"){ const {_for,...r
 function rowHTML(l){
   const p=(l.photos||[])[0];
   return `<div class="rowi">
-    <a class="th" href="#item-${esc(l.id)}" aria-label="${esc(l.title)}">${p?`<img src="${esc(photoSrc(p))}" alt="" loading="lazy">`:ICON[l.cat]||ICON.other}</a>
+    <a class="th" href="#item-${esc(l.id)}" aria-label="${esc(l.title)}">${p?`<img src="${esc(photoThumb(p))}" alt="" loading="lazy">`:ICON[l.cat]||ICON.other}</a>
     <div style="min-width:0">
       <h3><a href="#item-${esc(l.id)}">${esc(l.title)}</a></h3>
       ${l.removed?`<p class="modnote">${I.shield} Removed by Hinova Marketplace moderators${l.removedReason?`: ${esc(l.removedReason)}`:""}. Buyers can't see it. Questions? <a href="mailto:support@hinovaiq.io">support@hinovaiq.io</a></p>`:""}
@@ -1090,7 +1093,7 @@ function viewMine(){
   const tabs=[["active","Active"],["reserved","Reserved"],["sold","Sold"]];
   const xs = by(S.mineTab);
   return `<div class="wrap">
-    <div class="pagehead"><div><div class="eyebrow">Selling</div><h1>My listings</h1></div><div class="actions"><a class="btn" href="#saved">${I.heart.replace('width="18" height="18"','width="16" height="16"')}Saved${(()=>{const k=S.searches.reduce((n,x)=>n+searchNew(x),0);return k?` <span class="badge">${k} new</span>`:""})()}</a><a class="btn" href="#account">Account settings</a><a class="btn primary" href="#sell">Sell another</a></div></div>
+    ${pendingCard()}<div class="pagehead"><div><div class="eyebrow">Selling</div><h1>My listings</h1></div><div class="actions"><a class="btn" href="#saved">${I.heart.replace('width="18" height="18"','width="16" height="16"')}Saved${(()=>{const k=S.searches.reduce((n,x)=>n+searchNew(x),0);return k?` <span class="badge">${k} new</span>`:""})()}</a><a class="btn" href="#account">Account settings</a><a class="btn primary" href="#sell">Sell another</a></div></div>
     <div class="tabs" role="tablist">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${S.mineTab===k}" data-act="mineTab" data-k="${k}">${n} <span class="mono muted">${by(k).length}</span></button>`).join("")}</div>
     ${S.mine==null?`<div class="rows"><p class="muted">Loading…</p></div>`: xs.length?`<div class="rows">${xs.map(rowHTML).join("")}</div>`
       : `<div class="empty" style="margin-bottom:50px"><h2>${S.mineTab==="active"?"Nothing for sale right now":S.mineTab==="reserved"?"Nothing reserved":"Nothing sold yet"}</h2><p class="muted">${S.mineTab==="active"?"List a device and it will show up for buyers in your state.":"Listings move here as buyers reserve and buy them."}</p>${S.mineTab==="active"?`<a class="btn primary" href="#sell">Sell a device</a>`:""}</div>`}
@@ -1123,8 +1126,9 @@ function viewSeller(id){
   if(p===null) return `<div class="wrap" style="padding-block:30px"><div class="empty"><h2>This seller's account no longer exists</h2><a class="btn" href="#shop">Browse devices</a></div></div>`;
   const name = p ? showName(p.id,p.name) : (xs[0]?xs[0].sellerName:"Seller");
   return `<div class="wrap">
-    <div class="profile">${avatar(id,p?p.name:name,72)}<div class="grow"><h1>${esc(name)}</h1><div class="muted" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">${p&&p.state?`<span style="display:inline-flex;gap:4px;align-items:center">${I.pin}${esc(placeLabel(p.city,p.state))}</span>`:""}${p?`<span>Member since ${new Date(p.createdAt).toLocaleDateString("en-US",{month:"long",year:"numeric"})}</span>`:""}</div></div>
+    <div class="profile">${avatar(id,p?p.name:name,72)}<div class="grow"><h1>${esc(name)}</h1><div class="muted" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">${p&&p.state?`<span style="display:inline-flex;gap:4px;align-items:center">${I.pin}${esc(placeLabel(p.city,p.state))}</span>`:""}${p?`<span>Member since ${new Date(p.createdAt).toLocaleDateString("en-US",{month:"long",year:"numeric"})}</span>`:""}</div>${p?trustBadges(p,{since:false}):""}</div>
       ${p?`<div class="kpis"><div><b>${p.active}</b><span>For sale</span></div><div><b>${p.sold}</b><span>Sold</span></div></div>`:""}${isMe(id)?`<a class="btn" href="#account">Edit profile</a>`:""}</div>
+    ${p&&p.rating?`<div class="sechead"><h2>Ratings${p.rating.count?` <span class="muted" style="font-weight:600;font-size:16px">${pct(p.rating.up,p.rating.count)}% positive · ${p.rating.count}</span>`:""}</h2></div>${reviewsHTML(p.rating)}`:""}
     <div class="sechead"><h2>${isMe(id)?"Your listings":"Listings"}</h2></div>
     ${xs.length?`<div class="grid" style="padding-bottom:50px">${xs.map(l=>cardHTML(l)).join("")}</div>`:`<div class="empty" style="margin-bottom:50px"><h2>No devices for sale right now</h2></div>`}
   </div>`;
@@ -1146,6 +1150,7 @@ function viewAccount(){
       ${S.acctMsg?`<p class="${S.acctMsg.startsWith("Saved")?"muted":"err"}" role="status">${esc(S.acctMsg)}</p>`:""}
       <div class="actions"><button class="btn primary" type="submit" ${S.busy?"disabled":""}>Save changes</button><a class="btn ghost" href="#seller-${esc(m.id)}">View public profile</a><button class="btn ghost danger" type="button" data-act="logout" style="margin-left:auto">Sign out</button></div>
     </form>
+    ${alertsHTML()}
     ${securityHTML()}
     <div style="margin-top:16px"><div class="supportcard"><span>Questions, a problem with a buyer or seller, or feedback? Hinova Marketplace is a product of <b>Hinovaiq</b>.</span><a href="mailto:support@hinovaiq.io">support@hinovaiq.io</a></div></div></div>`;
 }
@@ -1156,7 +1161,7 @@ function viewSignIn(){
   if(S.me){ if(location.hash==="#signin"||!location.hash) location.hash = S.next && !/^(signin|verify|forgot|reset)/.test(S.next) ? S.next : "home"; return ""; }
   const up = S.authMode==="up";
   return `<div class="wrap"><div class="auth">
-    <div class="pitch"><h2>Used Apple, nearby and checked.</h2><ul>
+    <div class="pitch"><h2>Used Apple and Tesla, checked before you meet.</h2><ul>
       <li>${I.check}<span>Battery health, condition and Activation Lock on every listing</span></li>
       <li>${I.check}<span>Browse by state and city, from Seattle to Miami</span></li>
       <li>${I.check}<span>Chat, make offers, and pay in person at pickup</span></li></ul></div>
@@ -1386,6 +1391,128 @@ function modDialog(kind, id, name){
 }
 
 
+/* ---------- growth: trust badges, ratings, alerts, price guide, VIN lookup ---------- */
+const photoThumb = id => photoSrc(id) + "?s=t";
+const listingUrl = id => `${location.origin}/l/${encodeURIComponent(id)}`;
+const pct = (up, n) => n ? Math.round(100*up/n) : 0;
+// small trust signals shown next to a seller
+function trustBadges(p, opts={}){
+  if(!p) return "";
+  const b=[];
+  if(p.ratings||(p.rating&&p.rating.count)){ const up=p.rating?p.rating.up:p.up, n=p.rating?p.rating.count:p.ratings; b.push(`<span class="tb rate">${I.thumb}${pct(up,n)}% positive <span class="muted">(${n})</span></span>`); }
+  if(p.verified) b.push(`<span class="tb ok">${I.okc}Verified email</span>`);
+  if(p.founding) b.push(`<span class="tb gold">${I.star}Founding seller</span>`);
+  const since = p.since||p.createdAt; if(since && opts.since!==false) b.push(`<span class="tb">Member since ${new Date(since).toLocaleDateString("en-US",{month:"short",year:"numeric"})}</span>`);
+  return b.length?`<span class="tbadges">${b.join("")}</span>`:"";
+}
+function reviewsHTML(r){
+  if(!r || !r.count) return `<p class="muted" style="font-size:14px">No ratings yet. Ratings appear after a completed sale on Hinova.</p>`;
+  return `<div class="reviews">${r.reviews.map(x=>`<div class="rev"><span class="thumbic ${x.positive?"up":"down"}" aria-label="${x.positive?"Positive":"Negative"}">${I.thumb}</span><div><div>${x.comment?`“${esc(x.comment)}”`:`<span class="muted">${x.positive?"Positive":"Negative"} rating</span>`}</div><div class="muted" style="font-size:12.5px">${esc(x.by)} ${x.as==="seller"?"bought":"sold them"} ${esc(x.item||"an item")} · ${ago(x.at)}</div></div></div>`).join("")}</div>`;
+}
+
+/* ratings after a sale */
+async function loadPending(){ if(!S.me) return; try{ S.pendingRatings = await api("GET","/api/ratings/pending"); render(true); }catch(e){} }
+function pendingCard(listingId){
+  const xs = (S.pendingRatings||[]).filter(p=>!listingId || p.listingId===listingId);
+  if(!S.me || !xs.length) return "";
+  const p = xs[0];
+  return `<section class="${listingId?"":"wrap"}"><div class="ratecard">
+    <span class="tthumb">${p.photo?`<img src="${esc(photoThumb(p.photo))}" alt="">`:ICON.other}</span>
+    <div class="grow"><b>How was ${esc(p.otherName.split(" ")[0])} as a ${p.otherRole}?</b><div class="muted" style="font-size:13.5px">${esc(p.title)} · sold ${ago(p.soldAt)}. Your rating helps others trade safely.</div></div>
+    <div class="actions"><button class="btn sm thumbbtn" data-act="rateDlg" data-id="${esc(p.listingId)}" data-v="1" aria-label="Thumbs up">${I.thumb}</button><button class="btn sm thumbbtn down" data-act="rateDlg" data-id="${esc(p.listingId)}" data-v="0" aria-label="Thumbs down">${I.thumb}</button></div>
+  </div>${!listingId&&xs.length>1?`<p class="muted" style="font-size:13px;margin:6px 0 0">+${xs.length-1} more to rate</p>`:""}</section>`;
+}
+function rateDialog(listingId, positive){
+  const p=(S.pendingRatings||[]).find(x=>x.listingId===listingId); if(!p) return;
+  openDialog(`<form class="dlg" data-form="rate" data-id="${esc(listingId)}"><h2 id="dlgTitle">Rate ${esc(p.otherName)}</h2>
+    <p class="muted" style="font-size:14px">${esc(p.title)}. Ratings are public on their profile.</p>
+    <div class="seg" role="radiogroup"><label><input type="radio" name="rpos" value="1" ${positive?"checked":""}>Thumbs up</label><label><input type="radio" name="rpos" value="0" ${positive?"":"checked"}>Thumbs down</label></div>
+    <div class="field"><label for="rcomment">Add a few words <span class="muted" style="font-weight:400">(optional)</span></label><textarea id="rcomment" maxlength="200" rows="3" placeholder="${p.otherRole==="seller"?"For example: Exactly as described, easy pickup":"For example: On time and friendly"}"></textarea></div>
+    <p class="err" id="dlgErr" role="alert" hidden></p>
+    <div class="dact"><button type="button" class="btn ghost" data-act="closeDlg">Cancel</button><button class="btn primary" type="submit">Post rating</button></div></form>`);
+}
+// marking sold: ask who bought it so both sides can rate
+function soldDialog(l){
+  const ts = S.threads.filter(t=>t.listingId===l.id && isMe(t.sellerId));
+  openDialog(`<form class="dlg" data-form="sold" data-id="${esc(l.id)}"><h2 id="dlgTitle">Who bought it?</h2>
+    <p class="muted" style="font-size:14px">Pick the buyer so you can rate each other. Ratings build trust for your next sale.</p>
+    <div class="radios">${ts.map((t,i)=>`<label><input type="radio" name="buyer" value="${esc(t.buyerId)}" ${i===0?"checked":""}>${avatar(t.buyerId,t.buyerName,22)} ${esc(t.buyerName)}</label>`).join("")}<label><input type="radio" name="buyer" value="">Someone else, or sold outside Hinova</label></div>
+    <div class="dact"><button type="button" class="btn ghost" data-act="closeDlg">Cancel</button><button class="btn primary" type="submit">Mark sold</button></div></form>`);
+}
+
+/* alert settings */
+async function loadAlerts(){ if(!S.me) return; try{ S.alerts = await api("GET","/api/me/alerts"); if(S.route==="account") render(true); }catch(e){} }
+function alertsHTML(){
+  const a=S.alerts;
+  const rows=[["messages","New messages","When a buyer or seller writes to you."],["offers","Offers","When you get an offer, or yours is accepted."],["searches","Saved search matches","When a new listing matches a search you saved."],["priceDrops","Price drops","When something you saved gets cheaper."],["reminders","Selling tips","A nudge if your listing gets views but no messages."]];
+  return `<section class="card-form seccard" aria-labelledby="alH"><h2 id="alH">Email alerts</h2>
+    ${!a?`<p class="muted">Loading…</p>`:`${!a.emailEnabled?`<div class="notice warn"><span>Alert emails start once email is switched on for Hinova Marketplace. Your choices are saved now.</span></div>`:!a.emailVerified?`<div class="notice warn"><span>Verify your email to receive alerts. <a href="#verify">Verify now</a></span></div>`:""}
+    ${rows.map(([k,t,d])=>`<label class="secrow toggle"><div><b>${t}</b><div class="muted">${d}</div></div><input type="checkbox" class="switch" data-alert="${k}" ${a[k]?"checked":""} aria-label="${t}"></label>`).join("")}
+    <p class="muted" style="font-size:13px;margin:0">At most one email per conversation until you read it. Every alert email has a one-tap unsubscribe link.</p>`}
+  </section>`;
+}
+
+/* price guide: recent sales plus what's listed now */
+function priceGuide(active, soldAll, label){
+  const cutoff = Date.now() - 120*86400e3;
+  const sold = soldAll.filter(l=>(l.updatedAt||l.createdAt)>=cutoff).map(l=>l.agreedPrice||l.price).sort((a,b)=>a-b);
+  const act = active.map(l=>l.price).sort((a,b)=>a-b);
+  if(sold.length<1 && act.length<2) return "";
+  const med = xs => xs.length%2 ? xs[(xs.length-1)/2] : Math.round((xs[xs.length/2-1]+xs[xs.length/2])/2);
+  const parts=[];
+  if(sold.length) parts.push(`<div><b>Sold recently:</b> ${sold.length>1?`${money(sold[0])} – ${money(sold[sold.length-1])}`:money(sold[0])} <span class="muted">(${sold.length} sold)</span></div>`);
+  if(act.length>=2) parts.push(`<div><b>Listed now:</b> ${money(act[0])} – ${money(act[act.length-1])} <span class="muted">(${act.length} listed)</span></div>`);
+  const sug = sold.length ? med(sold) : med(act);
+  return `<div class="estimate guide">${I.trend}<div><div class="eyebrow" style="margin-bottom:2px">Price guide · ${esc(label)}</div>${parts.join("")}<div class="sug">Suggested: around <b>${money(sug)}</b> <button type="button" class="linkbtn" data-act="usePrice" data-v="${sug}">Use this price</button></div></div></div>`;
+}
+const PHOTO_TIPS = {
+  apple: ["Screen on, showing the home screen","Settings → Battery Health","Back and all four corners","Charging port","Any scratches up close"],
+  vehicle: ["Front three-quarter","Both sides","Interior and seats","Screen showing mileage and range","Tires and wheels","Any damage up close"],
+  accessory: ["The whole item","Connectors or mounting points","Part number label","Any wear up close"]
+};
+function photoTips(d){
+  const k = d._store==="ev" ? (EVD.isVehicle(d.cat)?"vehicle":"accessory") : "apple";
+  return `<details class="phototips"><summary>${I.cam.replace('class="cam"','width="16" height="16"')} Photos that sell faster</summary><ul>${PHOTO_TIPS[k].map(t=>`<li>${esc(t)}</li>`).join("")}</ul><p class="muted">Listings with 4 or more clear photos get more messages. Natural daylight works best.</p></details>`;
+}
+
+/* Tesla VIN lookup fills year, model and trim */
+let vinLast="";
+async function lookupVin(vin){
+  if(vin===vinLast || !/^[A-HJ-NPR-Z0-9]{17}$/.test(vin) || !S.draft) return;
+  vinLast=vin; const note=$("#vinNote"); if(note) note.textContent="Looking up this VIN…";
+  try{
+    const r = await api("GET","/api/vin/"+vin);
+    const d=S.draft; if(!d) return;
+    if(!r.tesla){ if($("#vinNote")) $("#vinNote").innerHTML=`<span style="color:var(--bad)">That VIN belongs to a ${esc(r.make||"different make")}, not a Tesla. Double-check it.</span>`; return; }
+    if(r.cat && EVD.isVehicle(r.cat)) d.cat=r.cat;
+    if(r.year) d.specs.year=String(r.year);
+    if(r.trim) d.specs.trim=r.trim;
+    saveDraftLocal(); render(true);
+    const label=[r.year, r.model, r.trim].filter(Boolean).join(" ");
+    const n=$("#vinNote"); if(n) n.innerHTML=`<span style="color:var(--ok)">${I.check} Filled in from the VIN: ${esc(label)}. Check the trim is right.</span>`;
+  }catch(e){ const n=$("#vinNote"); if(n) n.textContent=e.message; }
+}
+
+/* home: what makes Hinova safer */
+function safeSection(store){
+  const ev = store==="ev";
+  const items = [
+    [I.okc, "Verified members", "Everyone verifies their email before they can list or message, and ratings show how past deals went."],
+    [I.unlock, ev?"VIN and title up front":"Activation Lock checked", ev?"Vehicle listings show title status, accident history and the VIN to signed-in members.":"Locked iPhones, iPads, Macs and Watches can't be listed at all."],
+    [I.shield, "Scam warnings in chat", "We flag messages that ask for deposits, gift cards, wires or verification codes."],
+    [I.flag, "Real people review reports", "Report a listing or member and our moderators act on it, from removals to suspensions."],
+  ];
+  return `<section class="section"><div class="wrap"><div class="sechead"><h2>How Hinova keeps you safe</h2><a class="btn sm" href="#rules">Safety tips</a></div>
+    <div class="safegrid">${items.map(([ic,t,d])=>`<div class="safe"><span class="ic">${ic}</span><b>${t}</b><p class="muted">${d}</p></div>`).join("")}</div></div></section>`;
+}
+function weekCount(store){
+  const wk = Date.now()-7*86400e3;
+  const n = S.listings.filter(l=>active(l) && storeOf(l)===store && l.createdAt>=wk && inLoc(l)).length;
+  return n ? `<span class="newweek">${n} new ${S.loc.state?`in ${esc(S.loc.city||STATES[S.loc.state])} `:""}this week</span>` : "";
+}
+const meetupLink = l => l.city && l.state ? `<a href="https://www.google.com/maps/search/${encodeURIComponent(`police station safe exchange zone near ${l.city}, ${l.state}`)}" target="_blank" rel="noopener">Find a safe exchange spot near ${esc(l.city)}</a>` : "";
+
+
 /* ---------- dialogs ---------- */
 const dlg = () => $("#dlg");
 function openDialog(html){ const d=dlg(); d.innerHTML=html; if(!d.open) d.showModal(); const f=d.querySelector("input,select,button"); if(f) f.focus(); }
@@ -1505,7 +1632,7 @@ function route(){
     if(!(S.route==="chat" && /offer=1/.test(h))) S.offerOpen=false; S.offerAmt="";
     if(S.route!=="sell"&&S.route!=="edit") S.draft=null;
     if(S.route==="mine"||S.route==="edit") loadMine();
-    if(S.route==="account"){ S.sessions=null; loadSecurity(); }
+    if(S.route==="account"){ S.sessions=null; loadSecurity(); loadAlerts(); }
     if(S.route==="admin") loadAdmin();
     if(S.route==="forgot") S.forgotMsg="";
     if(S.route==="verify" && !S.param){ S.verifyErr=""; if(S.verifyState!=="checking") S.verifyState=""; }
@@ -1575,7 +1702,7 @@ async function addPhotos(files){
   S.uploading+=list.length; S.draftErr=""; render();
   // upload in parallel, but add them in the order the seller picked them so the first one stays the cover
   const ids = await Promise.all(list.map(async f=>{
-    try{ const data=await downscale(f,1600,.82); return (await api("POST","/api/photos",{data})).id; }
+    try{ const [data, thumb]=await Promise.all([downscale(f,1600,.82), downscale(f,480,.74)]); return (await api("POST","/api/photos",{data, thumb})).id; }
     catch(e){ S.draftErr=e.message; if(e.status===401) goSignIn(); else if(e.code==="verify_required") goVerify(); else if(e.code==="terms_required") termsDialog(); return null; }
   }));
   S.uploading -= list.length;
@@ -1597,12 +1724,12 @@ async function saveListing(){
     await loadListings(); loadMine(); loadActivity(); toast(isNew?"Your listing is live":"Listing updated"); location.hash="item-"+id;
   }catch(e){ S.busy=false; S.draftErr=e.message; if(e.status===401) goSignIn(); else if(e.code==="verify_required") goVerify(); else if(e.code==="terms_required") termsDialog(); render(); }
 }
-async function setStatus(id, s){
-  try{ await api("PATCH",`/api/listings/${encodeURIComponent(id)}/status`,{status:s}); await loadListings(); loadMine(); render(true);
+async function setStatus(id, s, buyerId){
+  try{ await api("PATCH",`/api/listings/${encodeURIComponent(id)}/status`,{status:s, ...(buyerId?{buyerId}:{})}); if(s==="sold") loadPending(); await loadListings(); loadMine(); render(true);
     toast(s==="sold"?"Marked sold":s==="reserved"?"Marked reserved":"Relisted"); }catch(err){ fail(err); }
 }
-async function copyLink(){
-  const url=location.href;
+async function copyLink(url){
+  url = url || location.href;
   try{ await navigator.clipboard.writeText(url); toast("Link copied"); }
   catch(e){ openDialog(`<div class="dlg"><h2 id="dlgTitle">Share this listing</h2><input class="input" id="shareUrl" value="${esc(url)}" readonly><div class="dact"><button class="btn primary" data-act="closeDlg">Done</button></div></div>`); const i=$("#shareUrl"); i.select(); }
 }
@@ -1646,11 +1773,14 @@ document.addEventListener("click", async e => {
     case "clearRecent": lsSet("as_recent",[]); render(true); break;
     case "locPromptDone": lsSet("as_locprompt_done",true); render(true); break;
     case "welcomeDone": if(S.me) lsSet("as_welcome_done_"+S.me.id,true); render(true); break;
-    case "share": { const l=S.route==="item"?findListing(S.param):null; shareLink(l?`${l.title} · ${money(l.price)}`:""); break; }
+    case "share": { const l=S.route==="item"?findListing(S.param):null; shareLink(l?`${l.title} · ${money(l.price)}`:"", l?listingUrl(l.id):""); break; }
     case "report": reportDialog(t.dataset.id); break;
     case "askDel": confirmDialog("Delete this listing?", "del", t.dataset.id); break;
     case "del": { const id=t.dataset.id; closeDialog(); try{ await api("DELETE",`/api/listings/${encodeURIComponent(id)}`); toast("Listing deleted"); await loadListings(); loadMine(); if(S.route==="item") location.hash="mine"; else render(true); }catch(err){ fail(err); } break; }
-    case "status": setStatus(t.dataset.id, t.dataset.s); break;
+    case "status": { const l=findListing(t.dataset.id)||(S.mine||[]).find(x=>x.id===t.dataset.id);
+      if(t.dataset.s==="sold" && l && !l.reservedFor && S.threads.some(x=>x.listingId===l.id && isMe(x.sellerId))) soldDialog(l); else setStatus(t.dataset.id, t.dataset.s); break; }
+    case "rateDlg": rateDialog(t.dataset.id, t.dataset.v==="1"); break;
+    case "usePrice": if(S.draft){ S.draft.price=t.dataset.v; const i=$("#price"); if(i) i.value=t.dataset.v; saveDraftLocal(); refreshSellSide("price"); toast("Price set to "+money(t.dataset.v)); } break;
     case "mineTab": S.mineTab=t.dataset.k; render(true); break;
     case "quick": { const c=currentConvo(); if(c&&c.l) sendMsg(c.l,c.t,{kind:"text",text:t.dataset.text}); break; }
     case "accept": if(!S.activeThread) return;
@@ -1698,6 +1828,9 @@ document.addEventListener("submit", async e => {
   if(kind==="sell") return saveListing();
   if(kind==="saveSearch"){ const name=$("#ssName").value.trim(); try{ const x=await api("POST","/api/searches",{name, query:shopHash()}); S.searches=[x, ...S.searches.filter(y=>y.id!==x.id)]; closeDialog(); toast("Search saved. Find it under Saved."); render(true); }catch(err){ closeDialog(); fail(err); } return; }
   if(kind==="locPrompt"){ const st=$("#lpState").value; if(!st) return toast("Choose your state first"); setLoc(st,""); lsSet("as_locprompt_done",true); toast(`Showing listings near ${STATES[st]}`); render(); return; }
+  if(kind==="rate"){ const pos=(form.querySelector("input[name=rpos]:checked")||{}).value==="1";
+    try{ await api("POST",`/api/listings/${encodeURIComponent(form.dataset.id)}/ratings`,{positive:pos, comment:$("#rcomment").value}); closeDialog(); S.pendingRatings=S.pendingRatings.filter(p=>p.listingId!==form.dataset.id); toast("Thanks for rating"); render(true); }catch(err){ dlgErr(err.message); } return; }
+  if(kind==="sold"){ const b=(form.querySelector("input[name=buyer]:checked")||{}).value||""; closeDialog(); await setStatus(form.dataset.id, "sold", b); return; }
   if(kind==="acceptTerms"){ if(!$("#tAccept").checked) return toast("Tick the box to accept"); try{ S.me=await api("POST","/api/me/accept-terms",{accept:true}); closeDialog(); toast("Thanks. You're all set."); render(true); }catch(err){ closeDialog(); fail(err); } return; }
   if(kind==="verify"){ const code=$("#vcode").value.replace(/\D/g,""); if(code.length!==6){ S.verifyErr="Enter all 6 digits from the email."; render(true); return; }
     S.busy=true; S.verifyErr=""; render(true);
@@ -1734,7 +1867,7 @@ document.addEventListener("submit", async e => {
     S.busy=true; S.authErr=""; render();
     try{ S.me=await api("POST", up?"/api/auth/register":"/api/auth/login", body); S.busy=false; toast(up?"Welcome to Hinova Marketplace":"Signed in");
       if(S.me.state && !S.loc.state) setLoc(S.me.state,S.me.city);
-      S.authForm={}; loadThreads(); loadSaved(); loadMine(); loadActivity(); loadSearches();
+      S.authForm={}; loadThreads(); loadSaved(); loadMine(); loadActivity(); loadSearches(); loadPending();
       if(up && needsVerify()){ S.verifyErr=""; S.verifyState=""; S.resendAt=Date.now()+30000; location.hash="verify"; if(S.me.mailSent===false) toast("We couldn't send the code just now. Tap “send a new code”."); else toast("Check your email for a 6-digit code"); }
       else location.hash = S.next && !/^(signin|verify|forgot|reset)/.test(S.next) ? S.next : "home";
       render(); }
@@ -1761,7 +1894,7 @@ document.addEventListener("input", e => {
     const d=S.draft;
     if(el.id==="place"){ d.place=el.value; const p=parsePlace(el.value); d.state=p?p.state:""; d.city=p?p.city:"";
       $("#placeHint").innerHTML = !el.value.trim()||p ? "Only the city and state are shown. Agree an exact public spot in chat." : '<span style="color:var(--bad)">Use “City, State”, for example “Mesa, Arizona”.</span>'; }
-    else if(el.name && el.name.startsWith("sp_") && el.tagName!=="SELECT" && el.type!=="radio"){ d.specs[el.name.slice(3)] = el.name==="sp_vin" ? el.value.toUpperCase() : el.value; }
+    else if(el.name && el.name.startsWith("sp_") && el.tagName!=="SELECT" && el.type!=="radio"){ d.specs[el.name.slice(3)] = el.name==="sp_vin" ? el.value.toUpperCase() : el.value; if(el.name==="sp_vin") lookupVin(el.value.toUpperCase().trim()); }
     else if(el.name && !["radio","checkbox"].includes(el.type) && el.tagName!=="SELECT") d[el.name]=el.value;
     saveDraftLocal(); refreshSellSide(el.id && el.id.startsWith("sp_") ? "title" : el.id);
   }
@@ -1780,6 +1913,7 @@ document.addEventListener("change", e => {
     if(el.id==="fState"){ setLoc(el.value,""); render(); syncShopHash(); }
     if(el.id==="fCity"){ setLoc(S.loc.state, el.value.trim()); render(); syncShopHash(); }
   }
+  if(el.dataset && el.dataset.alert){ const k=el.dataset.alert, v=el.checked; api("PUT","/api/me/alerts",{[k]:v}).then(a=>{ S.alerts=a; toast(v?"Alert on":"Alert off"); }).catch(err=>{ el.checked=!v; fail(err); }); return; }
   if(el.id==="admClosed"){ S.admin.closed=el.checked; S.admin.reports=null; render(true); loadAdmin(); return; }
   if(el.id==="photoIn" && el.files.length){ addPhotos(el.files); el.value=""; return; }
   if(S.draft && el.closest('[data-form="sell"]')){
@@ -1832,6 +1966,8 @@ $("#dlg").addEventListener("click", e => { if(e.target.id==="dlg") closeDialog()
 
 /* ---------- boot ---------- */
 initViewer(); initGallerySwipe();
+{ const m=/^\/l\/([\w-]{3,40})$/.exec(location.pathname); if(m) history.replaceState(null,"","/#item-"+m[1]); }
+if("serviceWorker" in navigator && location.protocol!=="file:") addEventListener("load", ()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}));
 (async () => {
   paintChrome();
   const [cfg, me] = await Promise.all([api("GET","/api/config").catch(()=>null), api("GET","/api/me").catch(()=>null)]);
@@ -1840,6 +1976,6 @@ initViewer(); initGallerySwipe();
   route();
   loadActivity();
   await loadListings();
-  if(S.me){ loadThreads(); loadSaved(); loadMine(); loadSearches(); }
+  if(S.me){ loadThreads(); loadSaved(); loadMine(); loadSearches(); loadPending(); }
 })();
 })();

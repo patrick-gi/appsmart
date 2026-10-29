@@ -11,7 +11,7 @@ const outbox = [];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 // One simple, branded layout for every message
-function layout({ heading, intro, code, button, after }) {
+function layout({ heading, intro, code, button, after, unsub }) {
   const html = `<!doctype html><html><body style="margin:0;background:#F7F6FB;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#16171D">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 12px"><tr><td align="center">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#fff;border-radius:16px;padding:32px">
@@ -21,26 +21,27 @@ function layout({ heading, intro, code, button, after }) {
     ${code ? `<tr><td style="padding-top:20px"><div style="font-family:Menlo,Consolas,monospace;font-size:32px;letter-spacing:8px;font-weight:700;background:#EEF6F1;border-radius:12px;padding:16px 20px;text-align:center">${esc(code)}</div></td></tr>` : ""}
     ${button ? `<tr><td style="padding-top:20px"><a href="${esc(button.href)}" style="display:inline-block;background:#0F5C3F;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:999px">${esc(button.label)}</a></td></tr>` : ""}
     ${after ? `<tr><td style="padding-top:18px;font-size:13px;line-height:1.5;color:#6B6E7A">${esc(after)}</td></tr>` : ""}
-    <tr><td style="padding-top:26px;border-top:1px solid #ECEBF2;margin-top:20px;font-size:12px;color:#8A8D99">Hinova Marketplace is a product of Hinovaiq · support@hinovaiq.io<br>You're getting this because of activity on your Hinova Marketplace account.</td></tr>
+    <tr><td style="padding-top:26px;border-top:1px solid #ECEBF2;margin-top:20px;font-size:12px;color:#8A8D99">Hinova Marketplace is a product of Hinovaiq · support@hinovaiq.io<br>You're getting this because of activity on your Hinova Marketplace account.${unsub ? ` <a href="${esc(unsub)}" style="color:#8A8D99">Turn off alert emails</a>` : ""}</td></tr>
   </table></td></tr></table></body></html>`;
   const text = [heading, "", intro, code ? `\n    ${code}\n` : "", button ? `${button.label}: ${button.href}` : "", after ? `\n${after}` : "",
-    "\n--\nHinova Marketplace, a product of Hinovaiq · support@hinovaiq.io"].filter((x) => x !== "").join("\n");
+    "\n--\nHinova Marketplace, a product of Hinovaiq · support@hinovaiq.io", unsub ? `Turn off alert emails: ${unsub}` : ""].filter((x) => x !== "").join("\n");
   return { html, text };
 }
 
 async function send(to, subject, parts) {
   const { html, text } = layout(parts);
+  const headers = parts.unsub ? { "List-Unsubscribe": `<${parts.unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : undefined;
   if (KEY) {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: FROM, to: [to], subject, html, text, reply_to: REPLY_TO }),
+      body: JSON.stringify({ from: FROM, to: [to], subject, html, text, reply_to: REPLY_TO, ...(headers ? { headers } : {}) }),
     });
     if (!r.ok) throw new Error(`Resend responded ${r.status}: ${(await r.text()).slice(0, 300)}`);
     return;
   }
   if (DEV) {
-    outbox.push({ to, subject, text, at: Date.now() });
+    outbox.push({ to, subject, text, at: Date.now(), headers });
     if (outbox.length > 300) outbox.shift();
     console.log(`[dev mail] to=${to} subject="${subject}"`);
     return;
@@ -65,6 +66,9 @@ module.exports = {
     button: { label: "Choose a new password", href: link },
     after: "If you didn't ask for this, ignore this email. Your password stays the same.",
   }),
+  // optional alerts (messages, offers, saved searches, price drops, reminders) carry an unsubscribe link
+  alert: (to, name, heading, intro, button, unsub) => send(to, heading, { heading, intro, button, unsub,
+    after: "Change which alerts you get in Account settings." }),
   notice: (to, name, heading, intro) => send(to, heading, {
     heading, intro: `Hi ${name || "there"}, ${intro}`,
     after: "If this wasn't you, reset your password right away and contact support@hinovaiq.io.",
