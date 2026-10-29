@@ -1,36 +1,55 @@
 (() => {
 "use strict";
 const $ = (s, el=document) => el.querySelector(s);
+const $$ = (s, el=document) => [...el.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const money = n => "$" + Math.round(Number(n)||0).toLocaleString("en-US");
-const ago = t => { const s=(Date.now()-t)/1000; if(s<60)return"just now"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; return Math.floor(s/86400)+"d ago"; };
+const ago = t => { const s=(Date.now()-t)/1000; if(s<60)return"just now"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; if(s<86400*30) return Math.floor(s/86400)+"d ago"; return new Date(t).toLocaleDateString("en-US",{month:"short",day:"numeric"}); };
+const { STATES, CITIES, MODELS } = window.US;
+const STATE_CODES = Object.keys(STATES).sort((a,b)=>STATES[a].localeCompare(STATES[b]));
+const lsGet = (k,d) => { try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } };
+const lsSet = (k,v) => { try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
 
 const CATS = [
-  {k:"iphone", n:"iPhone"}, {k:"ipad", n:"iPad"}, {k:"mac", n:"Mac"},
-  {k:"watch", n:"Watch"}, {k:"airpods", n:"AirPods"}, {k:"other", n:"Accessories"}
+  {k:"iphone", n:"iPhone", p:"iPhones"}, {k:"ipad", n:"iPad", p:"iPads"}, {k:"mac", n:"Mac", p:"Macs"},
+  {k:"watch", n:"Apple Watch", p:"Apple Watches"}, {k:"airpods", n:"AirPods", p:"AirPods"}, {k:"other", n:"Accessories", p:"Accessories"}
 ];
 const GRADES = {
-  A:{n:"Grade A", d:"Like new. No visible marks."},
-  B:{n:"Grade B", d:"Light wear. Minor scuffs, screen clean."},
-  C:{n:"Grade C", d:"Visible wear. Fully working."}
+  A:{n:"Like new", d:"No visible marks. Looks unused."},
+  B:{n:"Good", d:"Light wear, minor scuffs. Screen clean."},
+  C:{n:"Fair", d:"Visible wear or scratches. Fully working."}
 };
-const catName = k => (CATS.find(c=>c.k===k)||{n:"Device"}).n;
+const REASONS = [["scam","Looks like a scam"],["stolen","Might be stolen"],["wrong-info","Wrong or misleading details"],["offensive","Offensive content"],["sold-elsewhere","Already sold elsewhere"],["other","Something else"]];
+const catOf = k => CATS.find(c=>c.k===k) || {n:"Device", p:"Devices"};
 const ICON = {
-  iphone:'<svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2"><rect x="20" y="6" width="24" height="52" rx="5"/><rect x="27" y="9" width="10" height="3" rx="1.5"/></svg>',
-  ipad:'<svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2"><rect x="12" y="6" width="40" height="52" rx="4"/><circle cx="32" cy="9.5" r="1"/></svg>',
-  mac:'<svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2"><rect x="12" y="14" width="40" height="27" rx="2.5"/><path d="M6 46h52l-3 4H9z"/></svg>',
-  watch:'<svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2"><rect x="20" y="18" width="24" height="28" rx="7"/><path d="M24 18l2-10h12l2 10M24 46l2 10h12l2-10"/></svg>',
-  airpods:'<svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2"><rect x="14" y="22" width="36" height="28" rx="10"/><path d="M14 31h36"/><circle cx="32" cy="38" r="1.2"/></svg>',
-  other:'<svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10h20v12H22zM32 22v10"/><path d="M32 32c0 12-14 10-14 22"/></svg>'
+  iphone:'<svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="20" y="6" width="24" height="52" rx="6"/><rect x="27" y="10" width="10" height="3" rx="1.5"/></svg>',
+  ipad:'<svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="12" y="6" width="40" height="52" rx="5"/><circle cx="32" cy="10" r="1"/></svg>',
+  mac:'<svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="12" y="14" width="40" height="27" rx="3"/><path d="M6 46h52l-3 4H9z"/></svg>',
+  watch:'<svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="20" y="18" width="24" height="28" rx="8"/><path d="M24 18l2-10h12l2 10M24 46l2 10h12l2-10"/></svg>',
+  airpods:'<svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="14" y="22" width="36" height="28" rx="11"/><path d="M14 31h36"/><circle cx="32" cy="38" r="1.3"/></svg>',
+  other:'<svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M46 10 18 50l-4 6 6-3 28-40z"/><path d="M42 16l4 4"/></svg>'
 };
-const HEART = '<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.2 3.2 4.5 7 4.5c2 0 3.5 1.1 5 3 1.5-1.9 3-3 5-3 3.8 0 6.1 3.7 4.6 7.3C19.5 16.4 12 21 12 21z"/></svg>';
+const I = {
+  pin:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
+  heart:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20s-7-4.3-9-8.6C1.6 8 3.8 4.5 7.2 4.5c1.9 0 3.3 1 4.8 2.8 1.5-1.8 2.9-2.8 4.8-2.8 3.4 0 5.6 3.5 4.2 6.9C19 15.7 12 20 12 20z"/></svg>',
+  eye:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  chat:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20 15.5a2 2 0 0 1-2 2H8l-4 3.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>',
+  share:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>',
+  flag:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 21V4h11l-1.5 4L16 12H5"/></svg>',
+  left:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  right:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg>',
+  upload:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/></svg>',
+  check:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>',
+  shield:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/></svg>'
+};
 
 const S = {
-  me:null, listings:[], loaded:false, threads:[], saved:new Set(),
-  f:{q:"", cats:new Set(), grade:new Set(), max:"", area:"", lockOnly:false, hideSold:true, sort:"new", savedOnly:false},
-  route:"browse", param:"", activeThread:null, msgs:[], msgTid:null,
-  photoIx:0, confirm:null, draft:null, draftErr:"", busy:false, railOpen:false,
-  authMode:"in", authErr:"", next:""
+  me:null, listings:[], loaded:false, threads:[], saved:new Set(), mine:null,
+  loc: lsGet("as_loc", {state:"", city:""}),
+  f:{q:"", cat:"", grades:new Set(), min:"", max:"", batt:"", lockOnly:false, hideSold:true, sort:"new"},
+  route:"home", param:"", activeThread:null, msgs:[], msgTid:null, photoIx:0,
+  draft:null, draftErr:"", busy:false, uploading:0, railOpen:false, menuOpen:false, allStates:false,
+  mineTab:"active", sellers:{}, authMode:"in", authErr:"", next:"", acctMsg:""
 };
 
 /* ---------- api ---------- */
@@ -43,128 +62,223 @@ async function api(method, url, body){
 function toast(t){ const el=$("#toast"); el.textContent=t; el.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>el.hidden=true,2800); }
 function fail(e){ if(e.status===401){ S.me=null; goSignIn(); } toast(e.message); }
 
-/* ---------- people ---------- */
+/* ---------- small renderers ---------- */
 function initials(n){ return (n||"?").split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join("")||"?"; }
 function hue(id){ let h=0; for(const c of String(id)) h=(h*31+c.charCodeAt(0))%360; return h; }
-function avatar(id, name, size=30){
-  return `<span class="avatar" style="width:${size}px;height:${size}px;background:hsl(${hue(id)} 45% 42%);font-size:${Math.round(size*.4)}px" aria-hidden="true">${esc(initials(name))}</span>`;
-}
-const isMe = id => S.me && id===S.me.id;
+function avatar(id, name, size=32){ return `<span class="avatar" style="width:${size}px;height:${size}px;background:hsl(${hue(id)} 42% 40%);font-size:${Math.round(size*.38)}px" aria-hidden="true">${esc(initials(name))}</span>`; }
+const isMe = id => !!S.me && id===S.me.id;
 const showName = (id, n) => isMe(id) ? "You" : (n||"Someone");
-
-/* ---------- photos ---------- */
 const photoSrc = id => "/api/photos/" + encodeURIComponent(id);
-function photoBox(l){
-  const p=(l.photos||[])[0];
-  return p ? `<img src="${esc(photoSrc(p))}" alt="" loading="lazy">` : (ICON[l.cat]||ICON.other);
-}
-function downscale(file, maxPx, q){
-  return new Promise((res, rej) => {
-    const url = URL.createObjectURL(file); const img = new Image();
-    img.onload = () => { const r=Math.min(1, maxPx/Math.max(img.width,img.height));
-      const c=document.createElement("canvas"); c.width=Math.round(img.width*r); c.height=Math.round(img.height*r);
-      c.getContext("2d").drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url);
-      res(c.toDataURL("image/jpeg",q)); };
-    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("That file isn't an image we can read.")); };
-    img.src = url;
-  });
+const placeLabel = (city, state) => city && state ? `${city}, ${state}` : state ? STATES[state] || state : "";
+const locLabel = () => S.loc.city ? `${S.loc.city}, ${S.loc.state}` : S.loc.state ? STATES[S.loc.state] : "All of the US";
+const battClass = b => b==null?"":(b>=85?"ok":b>=80?"warn":"bad");
+const battColor = b => `var(--${battClass(b)||"ok"})`;
+function stateOptions(sel, allLabel){ return (allLabel!=null?`<option value="">${esc(allLabel)}</option>`:`<option value="" disabled ${sel?"":"selected"}>Choose a state</option>`) + STATE_CODES.map(c=>`<option value="${c}" ${sel===c?"selected":""}>${esc(STATES[c])}</option>`).join(""); }
+function cityList(id, state){
+  const known = new Set(CITIES[state]||[]);
+  S.listings.forEach(l=>{ if(l.state===state && l.city) known.add(l.city); });
+  return `<datalist id="${id}">${[...known].sort().map(c=>`<option value="${esc(c)}">`).join("")}</datalist>`;
 }
 
 /* ---------- filtering ---------- */
+const active = l => l.status!=="sold";
+function inLoc(l, loc=S.loc){ if(loc.state && l.state!==loc.state) return false; if(loc.city && (l.city||"").toLowerCase()!==loc.city.toLowerCase()) return false; return true; }
 function filtered(){
   const f=S.f, q=f.q.trim().toLowerCase();
+  const words = q.split(/\s+/).filter(Boolean);
   const xs = S.listings.filter(l => {
     if(f.hideSold && l.status==="sold") return false;
-    if(f.cats.size && !f.cats.has(l.cat)) return false;
-    if(f.grade.size && !f.grade.has(l.grade)) return false;
+    if(!inLoc(l)) return false;
+    if(f.cat && l.cat!==f.cat) return false;
+    if(f.grades.size && !f.grades.has(l.grade)) return false;
+    if(f.min && Number(l.price) < Number(f.min)) return false;
     if(f.max && Number(l.price) > Number(f.max)) return false;
+    if(f.batt && !(l.battery!=null && l.battery>=Number(f.batt))) return false;
     if(f.lockOnly && !l.lockOff) return false;
-    if(f.savedOnly && !S.saved.has(l.id)) return false;
-    if(f.area && !(l.area||"").toLowerCase().includes(f.area.toLowerCase())) return false;
-    if(q && !(`${l.title} ${l.storage} ${catName(l.cat)} ${l.desc}`).toLowerCase().includes(q)) return false;
+    if(words.length){ const hay=`${l.title} ${l.storage} ${catOf(l.cat).n} ${l.desc} ${l.city} ${STATES[l.state]||""}`.toLowerCase(); if(!words.every(w=>hay.includes(w))) return false; }
     return true;
   });
-  const by = {new:(a,b)=>b.createdAt-a.createdAt, low:(a,b)=>a.price-b.price, high:(a,b)=>b.price-a.price, batt:(a,b)=>(b.battery??-1)-(a.battery??-1)}[f.sort];
+  const by = {new:(a,b)=>b.createdAt-a.createdAt, low:(a,b)=>a.price-b.price, high:(a,b)=>b.price-a.price, batt:(a,b)=>(b.battery??-1)-(a.battery??-1)}[f.sort] || ((a,b)=>b.createdAt-a.createdAt);
   return xs.sort(by);
 }
-const battClass = b => b==null?"":(b>=85?"ok":b>=80?"warn":"bad");
+function shopHash(){
+  const p=new URLSearchParams(), f=S.f;
+  if(S.loc.state) p.set("state",S.loc.state); if(S.loc.city) p.set("city",S.loc.city);
+  if(f.cat) p.set("cat",f.cat); if(f.q) p.set("q",f.q); if(f.min) p.set("min",f.min); if(f.max) p.set("max",f.max);
+  if(f.grades.size) p.set("grade",[...f.grades].join("")); if(f.batt) p.set("batt",f.batt); if(f.lockOnly) p.set("lock","1");
+  if(f.sort!=="new") p.set("sort",f.sort);
+  const s=p.toString(); return "shop"+(s?"?"+s:"");
+}
+function syncShopHash(){ if(S.route==="shop"){ const h="#"+shopHash(); if(location.hash!==h) history.replaceState(null,"",h); } }
+function setLoc(state, city){ S.loc={state:state||"", city:(state&&city)||""}; lsSet("as_loc", S.loc); }
 
-/* ---------- views ---------- */
-function cardHTML(l, preview){
-  const st = l.status!=="active" ? `<span class="status ${l.status}">${l.status==="sold"?"Sold":"Reserved"}</span>` : "";
-  const heart = (!preview && S.me) ? `<button class="heart" data-act="save" data-id="${esc(l.id)}" aria-pressed="${S.saved.has(l.id)}" aria-label="Save listing">${HEART}</button>` : "";
-  const ph = preview && l._previewSrc ? `<img src="${esc(l._previewSrc)}" alt="">` : photoBox(l);
-  return `<article class="card" ${preview?"":`data-go="item-${esc(l.id)}" tabindex="0" role="link"`} aria-label="${esc(l.title)}, ${money(l.price)}">
-    <div class="ph" style="position:relative">${ph}${heart}</div>
-    <span class="tag">${money(l.price)}</span>${st}
+/* ---------- cards ---------- */
+function cardHTML(l, opts={}){
+  const st = l.status!=="active" ? `<span class="status ${l.status}">${l.status==="sold"?"Sold":"Reserved"}</span>` : (l.origPrice && l.origPrice>l.price ? `<span class="status drop">Price drop</span>` : "<span></span>");
+  const heart = (!opts.preview) ? `<button class="heart" data-act="save" data-id="${esc(l.id)}" aria-pressed="${S.saved.has(l.id)}" aria-label="${S.saved.has(l.id)?"Remove from saved":"Save listing"}">${I.heart}</button>` : "";
+  const p=(l.photos||[])[0];
+  const ph = opts.previewSrc ? `<img src="${esc(opts.previewSrc)}" alt="">` : p ? `<img src="${esc(photoSrc(p))}" alt="" loading="lazy">` : (ICON[l.cat]||ICON.other);
+  return `<article class="card" ${opts.preview?"":`data-go="item-${esc(l.id)}" tabindex="0" role="link"`} aria-label="${esc(l.title)}, ${money(l.price)}">
+    <div class="ph">${ph}<div class="over">${st}${heart}</div></div>
     <div class="body">
+      <div class="price"><b>${money(l.price)}</b>${l.origPrice&&l.origPrice>l.price?`<s>${money(l.origPrice)}</s>`:""}</div>
       <h3>${esc(l.title)}</h3>
       <div class="specline">
         ${l.storage?`<span class="pill">${esc(l.storage)}</span>`:""}
-        <span class="pill">${esc(l.grade)}</span>
-        ${l.battery!=null?`<span class="pill ${battClass(l.battery)}">${l.battery}% batt</span>`:""}
-        ${l.lockOff?`<span class="pill ok">Lock off</span>`:`<span class="pill bad">Lock on</span>`}
+        <span class="pill">${esc((GRADES[l.grade]||{}).n||l.grade)}</span>
+        ${l.battery!=null&&l.battery!==""?`<span class="pill ${battClass(l.battery)}">${l.battery}%</span>`:""}
+        ${l.lockOff?"":`<span class="pill bad">Locked</span>`}
       </div>
-      <div class="foot"><span>${esc(l.area||"Local pickup")}</span><span>${ago(l.createdAt)}</span></div>
+      <div class="meta"><span>${I.pin}${esc(placeLabel(l.city,l.state)||"Location not set")}</span><span>${l.createdAt?ago(l.createdAt):""}</span></div>
     </div></article>`;
 }
+const skeletons = n => Array.from({length:n},()=>`<div class="card cardsk"><div class="ph"></div><div class="body"><div class="line" style="width:40%"></div><div class="line" style="width:85%"></div><div class="line" style="width:60%"></div></div></div>`).join("");
 
-function viewBrowse(){
+/* ---------- views: home ---------- */
+function viewHome(){
+  const live = S.listings.filter(active);
+  const near = live.filter(l=>inLoc(l)).sort((a,b)=>b.createdAt-a.createdAt);
+  const fresh = (near.length ? near : live).slice(0,8);
+  const freshTitle = near.length ? `Fresh in ${locLabel()}` : S.loc.state ? `Fresh across the US` : "Fresh listings";
+  const counts = {}; live.forEach(l=>{ if(l.state) counts[l.state]=(counts[l.state]||0)+1; });
+  const ordered = [...STATE_CODES].sort((a,b)=>(counts[b]||0)-(counts[a]||0) || STATES[a].localeCompare(STATES[b]));
+  const shownStates = S.allStates ? ordered : ordered.slice(0,12);
+  const catCount = k => live.filter(l=>l.cat===k && inLoc(l)).length;
+  const popular = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).slice(0,4);
+  return `
+  <section class="hero"><div class="wrap herogrid">
+    <div>
+      <div class="eyebrow">Used Apple devices · Local pickup in all 50 states</div>
+      <h1>Buy and sell used Apple gear <em>near you.</em></h1>
+      <p class="lede">Every listing shows battery health, condition and Activation Lock status, so you know what you're getting before you meet.</p>
+      <form class="bigsearch" data-form="heroSearch" role="search">
+        <input id="heroQ" placeholder="What are you looking for?" aria-label="Search" autocomplete="off">
+        <select id="heroState" aria-label="State">${stateOptions(S.loc.state, "All of the US")}</select>
+        <button class="btn primary lg" type="submit">Search</button>
+      </form>
+      <div class="quick">
+        <span class="muted" style="font-size:13.5px">Popular:</span>
+        ${["iPhone 15","MacBook Air","AirPods Pro","iPad Air"].map(s=>`<a class="chip" href="#shop?q=${encodeURIComponent(s)}${S.loc.state?"&state="+S.loc.state:""}">${s}</a>`).join("")}
+      </div>
+    </div>
+    <div class="trust" aria-hidden="true">
+      <div class="thead"><span class="eyebrow">What every listing shows</span><span class="pill ok">Checked</span></div>
+      <div class="dev"><div class="ic">${ICON.iphone.replace('width="64" height="64"','width="40" height="40"')}</div><div><b>iPhone 15 Pro · 256 GB</b><div class="muted" style="font-size:13.5px">Example listing</div></div></div>
+      <ul>
+        <li><span>Battery health</span><b><span class="meter"><i style="width:92%;background:var(--ok)"></i></span>92%</b></li>
+        <li><span>Condition</span><b>Like new</b></li>
+        <li><span>Activation Lock</span><b class="ok">Off</b></li>
+        <li><span>Pickup</span><b>City, State</b></li>
+        <li><span>Payment</span><b>In person</b></li>
+      </ul>
+    </div>
+  </div></section>
+
+  <section class="section"><div class="wrap">
+    <div class="sechead"><h2>Shop by device</h2><span class="muted">${esc(locLabel())}</span></div>
+    <div class="cats">${CATS.map(c=>`<a class="cat" href="#shop?cat=${c.k}${S.loc.state?"&state="+S.loc.state:""}${S.loc.city?"&city="+encodeURIComponent(S.loc.city):""}"><span class="ic">${ICON[c.k]}</span><b>${c.n}</b><span>${catCount(c.k)} listed</span></a>`).join("")}</div>
+  </div></section>
+
+  <section class="section"><div class="wrap">
+    <div class="sechead"><h2>${esc(freshTitle)}</h2><a class="btn sm" href="#shop">See all</a></div>
+    ${!S.loaded ? `<div class="grid">${skeletons(4)}</div>` : fresh.length ? `<div class="grid">${fresh.map(l=>cardHTML(l)).join("")}</div>`
+      : `<div class="empty"><div class="ic">${ICON.iphone.replace('width="64" height="64"','width="36" height="36"')}</div><h2>Be the first to list in ${esc(locLabel())}</h2><p class="muted">Post a used iPhone, iPad, Mac, Watch or AirPods in about two minutes. Buyers nearby will see it right away.</p><a class="btn primary" href="#sell">Sell a device</a></div>`}
+  </div></section>
+
+  <section class="section"><div class="wrap">
+    <div class="sechead"><h2>Browse by state</h2>${popular.length?`<span class="muted">Most active: ${popular.map(s=>esc(STATES[s])).join(", ")}</span>`:""}</div>
+    <div class="states">${shownStates.map(c=>`<a class="statelink ${counts[c]?"":"empty"}" href="#shop?state=${c}"><span><span class="ab">${c}</span>${esc(STATES[c])}</span><span class="n">${counts[c]||0}</span></a>`).join("")}</div>
+    <div style="margin-top:12px"><button class="btn sm" data-act="allStates">${S.allStates?"Show fewer states":"Show all 50 states and DC"}</button></div>
+  </div></section>
+
+  <section class="section" id="how"><div class="wrap">
+    <div class="sechead"><h2>How it works</h2></div>
+    <div class="steps">
+      <div class="step"><h3>List it in two minutes</h3><p>Add photos, the model, battery health and your city. Your listing shows up for buyers in your state right away.</p></div>
+      <div class="step"><h3>Chat and agree a price</h3><p>Buyers message you or send an offer. Accept one and the device is reserved for them.</p></div>
+      <div class="step"><h3>Meet and pay in person</h3><p>Meet somewhere public. The buyer checks it works and is signed out of Find My, then pays you.</p></div>
+    </div>
+  </div></section>`;
+}
+
+/* ---------- views: shop ---------- */
+function viewShop(){
   const f=S.f, xs=filtered();
-  const chips = (set, items, key) => items.map(([k,n])=>`<button class="chip" data-act="chip" data-set="${key}" data-k="${k}" aria-pressed="${set.has(k)}">${n}</button>`).join("");
+  const cat = f.cat ? catOf(f.cat).p : "Used Apple devices";
+  const title = `${cat} ${S.loc.state ? "in "+locLabel() : "across the US"}`;
+  const pool = S.listings.filter(l=>active(l) && l.state===S.loc.state && (!f.cat||l.cat===f.cat));
+  const cityCounts = {}; pool.forEach(l=>{ if(l.city) cityCounts[l.city]=(cityCounts[l.city]||0)+1; });
+  const cityChips = S.loc.state ? `<div class="citybar" aria-label="Cities">
+      <button class="chip ${!S.loc.city?"on":""}" data-act="setCity" data-city="">All of ${esc(STATES[S.loc.state])} <span class="n">${pool.length}</span></button>
+      ${Object.keys(cityCounts).sort((a,b)=>cityCounts[b]-cityCounts[a]).map(c=>`<button class="chip ${S.loc.city&&S.loc.city.toLowerCase()===c.toLowerCase()?"on":""}" data-act="setCity" data-city="${esc(c)}">${esc(c)} <span class="n">${cityCounts[c]}</span></button>`).join("")}
+    </div>` : "";
+  const activeF = [];
+  if(f.q) activeF.push(["q",`“${f.q}”`]);
+  f.grades.forEach(g=>activeF.push(["grade:"+g, GRADES[g].n]));
+  if(f.min) activeF.push(["min",`Over ${money(f.min)}`]);
+  if(f.max) activeF.push(["max",`Under ${money(f.max)}`]);
+  if(f.batt) activeF.push(["batt",`Battery ${f.batt}%+`]);
+  if(f.lockOnly) activeF.push(["lock","Lock off"]);
   let body;
-  if(!S.loaded) body = `<div class="empty"><p class="muted">Loading listings…</p></div>`;
-  else if(S.listings.length===0) body = `<div class="empty">${ICON.iphone}<h2>No devices listed yet</h2><p class="muted">Post the first one. It takes about a minute: photos, storage, condition, battery health and your price.</p><a class="btn primary" href="#sell">Sell a device</a></div>`;
-  else if(xs.length===0) body = `<div class="empty"><h2>Nothing matches those filters</h2><p class="muted">Try a higher price limit or fewer categories.</p><button class="btn" data-act="reset">Clear filters</button></div>`;
+  if(!S.loaded) body = `<div class="grid">${skeletons(8)}</div>`;
+  else if(!xs.length) body = `<div class="empty"><h2>No matches ${S.loc.state?"in "+esc(locLabel()):""}</h2><p class="muted">${S.loc.city?`Try all of ${esc(STATES[S.loc.state])}, or clear some filters.`:S.loc.state?"Try searching across the US, or clear some filters.":"Try clearing some filters."}</p><div class="actions">${S.loc.city?`<button class="btn" data-act="setCity" data-city="">All of ${esc(STATES[S.loc.state])}</button>`:S.loc.state?`<button class="btn" data-act="clearLoc">Search all of the US</button>`:""}<button class="btn ghost" data-act="reset">Clear filters</button><a class="btn primary" href="#sell">Sell one here</a></div></div>`;
   else body = `<div class="grid">${xs.map(l=>cardHTML(l)).join("")}</div>`;
-  return `<div class="browse">
-    <aside class="rail ${S.railOpen?"open":""}" aria-label="Filters">
-      <fieldset><legend class="eyebrow">Device</legend><div class="chips">${chips(f.cats, CATS.map(c=>[c.k,c.n]), "cats")}</div></fieldset>
-      <fieldset><legend class="eyebrow">Condition</legend><div class="chips">${chips(f.grade, Object.keys(GRADES).map(g=>[g,"Grade "+g]), "grade")}</div></fieldset>
-      <div class="field"><label for="fmax">Max price</label><input id="fmax" type="number" min="0" step="10" inputmode="numeric" placeholder="Any" value="${esc(f.max)}"></div>
-      <div class="field"><label for="farea">Pickup area</label><input id="farea" type="text" placeholder="Any area" value="${esc(f.area)}"></div>
-      <label class="check"><input id="flock" type="checkbox" ${f.lockOnly?"checked":""}> Activation Lock off only</label>
-      <label class="check"><input id="fsold" type="checkbox" ${f.hideSold?"checked":""}> Hide sold</label>
-      ${S.me?`<label class="check"><input id="fsaved" type="checkbox" ${f.savedOnly?"checked":""}> Saved only</label>`:""}
-      <button class="btn ghost" data-act="reset" style="align-self:flex-start">Clear filters</button>
-    </aside>
-    <section style="min-width:0">
-      <div class="listhead">
-        <div><div class="eyebrow">Used Apple devices · local pickup</div><h1>${xs.length} ${xs.length===1?"device":"devices"} for sale</h1></div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <button class="btn mobile-filter" data-act="rail">Filters</button>
-          <label class="muted" for="fsort" style="font-size:13.5px">Sort</label>
-          <select id="fsort" class="btn" style="padding:8px 12px">
-            <option value="new" ${f.sort==="new"?"selected":""}>Newest</option>
+  return `<div class="wrap">
+    <div class="shophead">
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="#shop" data-act="clearLoc">United States</a>${S.loc.state?` / <a href="#shop?state=${S.loc.state}" data-act="setCity" data-city="">${esc(STATES[S.loc.state])}</a>`:""}${S.loc.city?` / <span>${esc(S.loc.city)}</span>`:""}</nav>
+      <h1>${esc(title)}</h1>
+      ${cityChips}
+    </div>
+    <div class="shop">
+      <aside class="rail ${S.railOpen?"open":""}" aria-label="Filters">
+        <fieldset><legend class="eyebrow">Location</legend>
+          <select class="input" id="fState" aria-label="State">${stateOptions(S.loc.state,"All of the US")}</select>
+          ${S.loc.state?`<input class="input" id="fCity" list="fCities" placeholder="Any city in ${esc(S.loc.state)}" value="${esc(S.loc.city)}" aria-label="City">${cityList("fCities",S.loc.state)}`:""}
+        </fieldset>
+        <fieldset><legend class="eyebrow">Device</legend><div class="chips">
+          <button class="chip" data-act="cat" data-k="" aria-pressed="${!f.cat}">All</button>
+          ${CATS.map(c=>`<button class="chip" data-act="cat" data-k="${c.k}" aria-pressed="${f.cat===c.k}">${c.n}</button>`).join("")}</div></fieldset>
+        <fieldset><legend class="eyebrow">Condition</legend><div class="chips">${Object.entries(GRADES).map(([g,v])=>`<button class="chip" data-act="grade" data-k="${g}" aria-pressed="${f.grades.has(g)}">${v.n}</button>`).join("")}</div></fieldset>
+        <fieldset><legend class="eyebrow">Price</legend><div class="row2">
+          <div class="prefix"><span>$</span><input class="input" id="fmin" type="number" min="0" inputmode="numeric" placeholder="Min" value="${esc(f.min)}" aria-label="Minimum price"></div>
+          <div class="prefix"><span>$</span><input class="input" id="fmax" type="number" min="0" inputmode="numeric" placeholder="Max" value="${esc(f.max)}" aria-label="Maximum price"></div></div></fieldset>
+        <fieldset><legend class="eyebrow">Battery health</legend>
+          <select class="input" id="fbatt" aria-label="Minimum battery health"><option value="">Any</option>${[95,90,85,80].map(v=>`<option value="${v}" ${String(f.batt)===String(v)?"selected":""}>${v}% or higher</option>`).join("")}</select></fieldset>
+        <label class="check"><input id="flock" type="checkbox" ${f.lockOnly?"checked":""}> Activation Lock off only</label>
+        <label class="check"><input id="fsold" type="checkbox" ${f.hideSold?"checked":""}> Hide sold</label>
+        <button class="btn sm ghost" data-act="reset" style="align-self:flex-start">Clear all filters</button>
+      </aside>
+      <section style="min-width:0">
+        <div class="listbar">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>${xs.length} ${xs.length===1?"result":"results"}</b><button class="btn sm mfilter" data-act="rail">Filters</button><div class="activef">${activeF.map(([k,t])=>`<button data-act="unf" data-k="${esc(k)}" aria-label="Remove filter ${esc(t)}">${esc(t)} ×</button>`).join("")}</div></div>
+          <select class="selectsm" id="fsort" aria-label="Sort">
+            <option value="new" ${f.sort==="new"?"selected":""}>Newest first</option>
             <option value="low" ${f.sort==="low"?"selected":""}>Price: low to high</option>
             <option value="high" ${f.sort==="high"?"selected":""}>Price: high to low</option>
             <option value="batt" ${f.sort==="batt"?"selected":""}>Best battery</option>
           </select>
-        </div>
-      </div>${body}
-    </section></div>`;
+        </div>${body}
+      </section>
+    </div></div>`;
 }
 
-const findListing = id => S.listings.find(l=>l.id===id);
-
+/* ---------- views: item ---------- */
+const findListing = id => S.listings.find(l=>l.id===id) || (S.mine||[]).find(l=>l.id===id);
 function sheetHTML(l){
   const g = GRADES[l.grade]||GRADES.B;
   return `<div class="sheet">
-    <div class="hd"><span class="eyebrow">Inspection sheet</span><span class="mono muted">${esc(l.id.slice(1,9).toUpperCase())}</span></div>
+    <div class="hd"><span class="eyebrow">Inspection sheet</span><span class="mono muted" style="font-size:12px">#${esc(l.id.slice(1,9).toUpperCase())}</span></div>
     <dl>
-      <dt>Device</dt><dd>${esc(catName(l.cat))}</dd>
+      <dt>Device</dt><dd>${esc(catOf(l.cat).n)}</dd>
       ${l.storage?`<dt>Storage</dt><dd>${esc(l.storage)}</dd>`:""}
-      <dt>Condition</dt><dd>${esc(g.n)}<br><span class="muted" style="font-family:var(--body)">${esc(g.d)}</span></dd>
-      ${l.battery!=null?`<dt>Battery health</dt><dd><span class="meter"><i style="width:${Math.max(0,Math.min(100,l.battery))}%;background:var(--${battClass(l.battery)||"ok"})"></i></span>${l.battery}%</dd>`:""}
+      <dt>Condition</dt><dd>${esc(g.n)}<br><span class="muted" style="font-family:var(--font)">${esc(g.d)}</span></dd>
+      ${l.battery!=null?`<dt>Battery health</dt><dd><span class="meter"><i style="width:${Math.max(0,Math.min(100,l.battery))}%;background:${battColor(l.battery)}"></i></span>${l.battery}%</dd>`:""}
       <dt>Activation Lock</dt><dd style="color:var(--${l.lockOff?"ok":"bad"})">${l.lockOff?"Off · ready to set up":"On · seller must remove"}</dd>
-      <dt>Pickup</dt><dd>${esc(l.area||"Ask seller")}</dd>
-      <dt>Payment</dt><dd>At pickup</dd>
+      <dt>Pickup</dt><dd>${esc(placeLabel(l.city,l.state)||"Ask seller")}</dd>
+      <dt>Payment</dt><dd>In person at pickup</dd>
     </dl></div>`;
 }
-
-// a conversation as the current user sees it; `fresh` = buyer hasn't written yet
 function buyerThread(l){ return S.threads.find(t=>t.listingId===l.id && isMe(t.buyerId)) || {id:null, listingId:l.id, sellerId:l.sellerId, sellerName:l.sellerName, buyerId:S.me.id, fresh:true}; }
-
 function chatHTML(t, l, opts={}){
   const seller = isMe(t.sellerId);
   const otherId = seller? t.buyerId : t.sellerId, otherName = seller? t.buyerName : t.sellerName;
@@ -174,199 +288,377 @@ function chatHTML(t, l, opts={}){
     if(m.kind==="sys") return `<div class="msg sys">${esc(m.text)}</div>`;
     if(m.kind==="offer"){
       const canAccept = seller && !mine && l && l.status==="active";
-      return `<div class="msg offer" style="align-self:${mine?"flex-end":"flex-start"}"><div class="eyebrow">${mine?"Your offer":"Offer"}</div><b>${money(m.amount)}</b>${canAccept?`<div class="actions" style="margin-top:6px"><button class="btn primary" data-act="accept" data-amt="${Number(m.amount)}">Accept and reserve</button></div>`:""}<div class="t">${ago(m.at)}</div></div>`;
+      return `<div class="msg offer" style="align-self:${mine?"flex-end":"flex-start"}"><div class="eyebrow">${mine?"Your offer":"Offer"}</div><b>${money(m.amount)}</b>${canAccept?`<div class="actions" style="margin-top:8px"><button class="btn primary sm" data-act="accept" data-amt="${Number(m.amount)}">Accept and reserve</button></div>`:""}<div class="t">${ago(m.at)}</div></div>`;
     }
     return `<div class="msg ${mine?"me":""}">${esc(m.text)}<div class="t">${ago(m.at)}</div></div>`;
   }).join("");
-  const empty = !ms.length ? `<p class="muted" style="margin:auto;text-align:center;font-size:14px">${seller?"No messages yet.":"Ask about the device or make an offer. Agree on a public meetup spot before you go."}</p>` : "";
+  const empty = !ms.length ? `<p class="muted" style="margin:auto;text-align:center;font-size:14px;max-width:34ch">${seller?"No messages yet.":"Ask a question or make an offer. Agree on a public meetup spot before you go."}</p>` : "";
   const open = l && l.status!=="sold";
   return `<div class="chat">
-    <div class="hd"><div class="seller">${avatar(otherId, otherName, 28)}<div><b>${esc(showName(otherId, otherName))}</b><div class="role">${seller?"Buyer":"Seller"}</div></div></div>${opts.link&&l?`<a class="btn ghost" href="#item-${esc(l.id)}">View listing</a>`:""}</div>
+    <div class="hd"><div class="person">${avatar(otherId, otherName, 32)}<div><b>${esc(showName(otherId, otherName))}</b><div class="role">${seller?"Buyer":"Seller"}</div></div></div>${opts.link&&l?`<a class="btn sm" href="#item-${esc(l.id)}">View listing</a>`:""}</div>
     <div class="msgs" id="msgs">${items}${empty}</div>
-    ${open?`<form class="compose" data-form="msg"><input id="msgText" placeholder="Write a message" autocomplete="off" aria-label="Message" maxlength="1000"><button class="btn primary" type="submit" ${S.busy?"disabled":""}>Send</button></form>
-    ${!seller && l.status==="active"?`<div class="quick">${["Is this still available?","Can I see it working before paying?","When could you meet?"].map(q=>`<button class="chip" data-act="quick" data-text="${esc(q)}">${esc(q)}</button>`).join("")}</div>
-    <form class="offerrow" data-form="offer"><label for="offerAmt" class="muted" style="font-size:13.5px">Offer</label><input id="offerAmt" type="number" min="1" step="5" inputmode="numeric" value="${Math.round(l.price*0.9/5)*5}"><button class="btn" type="submit">Send offer</button></form>`:""}`
-    : `<p class="muted" style="padding:10px 14px;margin:0;font-size:13.5px">${l?"This device has sold.":"This listing was removed."}</p>`}
+    ${open?`${!seller && l.status==="active"?`<div class="quickq">${["Is this still available?","Can I see it working before paying?","When could you meet?"].map(q=>`<button class="chip" data-act="quick" data-text="${esc(q)}">${esc(q)}</button>`).join("")}</div>`:""}
+    <form class="compose" data-form="msg"><input id="msgText" placeholder="Write a message" autocomplete="off" aria-label="Message" maxlength="1000"><button class="btn primary" type="submit">Send</button></form>
+    ${!seller && l.status==="active"?`<form class="offerrow" data-form="offer"><label for="offerAmt" class="muted" style="font-size:13.5px">Make an offer</label><div class="prefix"><span>$</span><input id="offerAmt" type="number" min="1" step="5" inputmode="numeric" value="${Math.round(l.price*0.9/5)*5}"></div><button class="btn sm" type="submit">Send offer</button></form>`:""}`
+    : `<p class="muted" style="padding:12px 16px;margin:0;font-size:13.5px">${l?"This device has sold.":"This listing was removed."}</p>`}
   </div>`;
 }
-
 function viewItem(id){
   const l = findListing(id);
-  if(!l) return `<a class="btn ghost back" href="#browse">← All devices</a><div class="empty"><h2>${S.loaded?"This listing was removed":"Loading…"}</h2></div>`;
+  if(!l) return `<div class="wrap" style="padding-block:30px"><div class="empty"><h2>${S.loaded?"This listing was removed":"Loading…"}</h2>${S.loaded?`<a class="btn" href="#shop">Browse devices</a>`:""}</div></div>`;
+  pingView(l);
   const photos = (l.photos||[]).map(photoSrc);
   const ix = Math.min(S.photoIx, Math.max(0,photos.length-1));
-  const main = photos.length ? `<img src="${esc(photos[ix])}" alt="${esc(l.title)}">` : (ICON[l.cat]||ICON.other).replace('width="64" height="64"','width="140" height="140"');
+  const main = photos.length ? `<img src="${esc(photos[ix])}" alt="${esc(l.title)}, photo ${ix+1} of ${photos.length}">` : (ICON[l.cat]||ICON.other).replace('width="64" height="64"','width="150" height="150"');
   const mine = isMe(l.sellerId);
   let actions="", chat="";
   if(mine){
-    const c = S.confirm==="delete" ? `<div class="confirm">Delete this listing for good? <button class="btn danger" data-act="del">Delete</button><button class="btn ghost" data-act="cancelConfirm">Keep it</button></div>` : "";
     actions = `<div class="actions">
-      <a class="btn" href="#edit-${esc(l.id)}">Edit</a>
-      ${l.status==="active"?`<button class="btn" data-act="status" data-s="reserved">Mark reserved</button>`:""}
-      ${l.status!=="sold"?`<button class="btn primary" data-act="status" data-s="sold">Mark sold</button>`:""}
-      ${l.status!=="active"?`<button class="btn" data-act="status" data-s="active">Relist</button>`:""}
-      <button class="btn ghost danger" data-act="askDel">Delete</button></div>${c}`;
+      <a class="btn" href="#edit-${esc(l.id)}">Edit listing</a>
+      ${l.status==="active"?`<button class="btn" data-act="status" data-id="${esc(l.id)}" data-s="reserved">Mark reserved</button>`:""}
+      ${l.status!=="sold"?`<button class="btn primary" data-act="status" data-id="${esc(l.id)}" data-s="sold">Mark sold</button>`:""}
+      ${l.status!=="active"?`<button class="btn" data-act="status" data-id="${esc(l.id)}" data-s="active">Relist</button>`:""}
+      <button class="btn ghost danger" data-act="askDel" data-id="${esc(l.id)}">Delete</button></div>`;
     const ts = S.threads.filter(t=>t.listingId===l.id && isMe(t.sellerId));
     if(ts.length){
       const cur = ts.find(t=>t.id===S.activeThread) || ts[0];
       S.activeThread = cur.id; wantMsgs(cur.id);
-      chat = `<div class="eyebrow">Buyers asking (${ts.length})</div>
-        ${ts.length>1?`<div class="chips">${ts.map(t=>`<button class="chip" data-act="pick" data-tid="${esc(t.id)}" aria-pressed="${t.id===cur.id}">${esc(t.buyerName||"Someone")}${t.unread?" •":""}</button>`).join("")}</div>`:""}
-        ${chatHTML(cur,l)}`;
-    } else chat = `<p class="muted">No buyers have messaged yet. Share the link to this listing to get it seen.</p>`;
+      chat = `<div><div class="eyebrow" style="margin-bottom:8px">Buyers asking (${ts.length})</div>
+        ${ts.length>1?`<div class="chips" style="margin-bottom:10px">${ts.map(t=>`<button class="chip" data-act="pick" data-tid="${esc(t.id)}" aria-pressed="${t.id===cur.id}">${esc(t.buyerName||"Someone")}${t.unread?" •":""}</button>`).join("")}</div>`:""}
+        ${chatHTML(cur,l)}</div>`;
+    } else chat = `<div class="notice plain"><span>No buyers have messaged yet. Share the link to get more eyes on it.</span><button class="btn sm" data-act="share" style="margin-left:auto">${I.share} Copy link</button></div>`;
   } else if(S.me){
     const t = buyerThread(l); S.activeThread=t.id; if(t.id) wantMsgs(t.id);
     if(l.status==="reserved" && l.reservedFor && !isMe(l.reservedFor)) actions = `<div class="notice warn">Reserved for another buyer. You can still message the seller in case it falls through.</div>`;
-    if(l.status==="reserved" && isMe(l.reservedFor)) actions = `<div class="notice">Reserved for you at <b>${money(l.agreedPrice||l.price)}</b>. Pay the seller at pickup after you've checked the device and confirmed Activation Lock is off.</div>`;
+    if(l.status==="reserved" && isMe(l.reservedFor)) actions = `<div class="notice">${I.check} Reserved for you at <b>${money(l.agreedPrice||l.price)}</b>. Pay at pickup after you've checked the device works and Activation Lock is off.</div>`;
     chat = chatHTML(t,l);
   } else {
-    actions = `<div class="notice warn"><span>Sign in to message the seller or make an offer.</span><a class="btn primary" href="#signin" style="margin-left:auto">Sign in</a></div>`;
+    actions = `<div class="notice"><span>Sign in to message the seller or make an offer.</span><a class="btn primary sm" href="#signin" style="margin-left:auto">Sign in</a></div>`;
   }
-  return `<a class="btn ghost back" href="#browse">← All devices</a>
+  const similar = S.listings.filter(x=>x.id!==l.id && active(x) && x.cat===l.cat).sort((a,b)=>(b.state===l.state)-(a.state===l.state) || b.createdAt-a.createdAt).slice(0,4);
+  return `<div class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb" style="padding-top:20px"><a href="#shop">United States</a>${l.state?` / <a href="#shop?state=${esc(l.state)}">${esc(STATES[l.state]||l.state)}</a>`:""}${l.city?` / <a href="#shop?state=${esc(l.state)}&city=${encodeURIComponent(l.city)}">${esc(l.city)}</a>`:""} / <a href="#shop?cat=${esc(l.cat)}${l.state?"&state="+esc(l.state):""}">${esc(catOf(l.cat).p)}</a></nav>
   <div class="item">
     <div class="gallery">
-      <div class="main">${main}${l.status!=="active"?`<span class="status ${l.status}">${l.status==="sold"?"Sold":"Reserved"}</span>`:""}</div>
+      <div class="gmain">${main}
+        ${photos.length>1?`<button class="gnav l" data-act="photo" data-i="${(ix-1+photos.length)%photos.length}" aria-label="Previous photo">${I.left}</button><button class="gnav r" data-act="photo" data-i="${(ix+1)%photos.length}" aria-label="Next photo">${I.right}</button><span class="gcount">${ix+1} / ${photos.length}</span>`:""}
+        <div class="over">${l.status!=="active"?`<span class="status ${l.status}">${l.status==="sold"?"Sold":"Reserved"}</span>`:"<span></span>"}</div>
+      </div>
       ${photos.length>1?`<div class="thumbs">${photos.map((p,i)=>`<button data-act="photo" data-i="${i}" aria-current="${i===ix}" aria-label="Photo ${i+1}"><img src="${esc(p)}" alt=""></button>`).join("")}</div>`:""}
-      ${l.desc?`<div><div class="eyebrow" style="margin:8px 0 4px">From the seller</div><p class="desc" style="margin:0">${esc(l.desc)}</p></div>`:""}
     </div>
     <div class="side">
-      <div><div class="eyebrow">${esc(catName(l.cat))}${l.storage?" · "+esc(l.storage):""}</div><h1>${esc(l.title)}</h1></div>
-      <div><span class="tag big">${money(l.price)}</span></div>
-      <div class="seller">${avatar(l.sellerId,l.sellerName,38)}<div><b>${esc(showName(l.sellerId,l.sellerName))}</b><div class="muted" style="font-size:13px">Listed ${ago(l.createdAt)}</div></div></div>
-      ${actions}${sheetHTML(l)}${chat}
+      <div><div class="eyebrow">${esc(catOf(l.cat).n)}${l.storage?" · "+esc(l.storage):""}</div><h1 style="margin-top:6px">${esc(l.title)}</h1></div>
+      <div class="pricebig"><span class="tag">${money(l.price)}</span>${l.origPrice&&l.origPrice>l.price?`<span class="dropnote">Dropped from ${money(l.origPrice)}</span>`:""}</div>
+      <div class="locline">${I.pin}<span>Pickup in ${l.city?`<a href="#shop?state=${esc(l.state)}&city=${encodeURIComponent(l.city)}">${esc(l.city)}</a>, `:""}<a href="#shop?state=${esc(l.state)}">${esc(STATES[l.state]||l.state||"—")}</a></span></div>
+      <div class="stats"><span>Listed ${ago(l.createdAt)}</span>${l.views?`<span>${I.eye}${l.views} ${l.views===1?"view":"views"}</span>`:""}</div>
+      <a class="sellercard" href="#seller-${esc(l.sellerId)}">${avatar(l.sellerId,l.sellerName,42)}<span class="grow"><b>${esc(showName(l.sellerId,l.sellerName))}</b><span class="muted" style="display:block;font-size:13px">See all listings from this seller</span></span>${I.right}</a>
+      ${actions}
+      <div class="actions">${!mine&&l.status!=="sold"?`<button class="btn sm" data-act="save" data-id="${esc(l.id)}" aria-pressed="${S.saved.has(l.id)}">${I.heart} ${S.saved.has(l.id)?"Saved":"Save"}</button>`:""}<button class="btn sm" data-act="share">${I.share} Copy link</button>${!mine?`<button class="btn sm ghost" data-act="report" data-id="${esc(l.id)}">${I.flag} Report</button>`:""}</div>
+      ${sheetHTML(l)}
+      ${l.desc?`<div><div class="eyebrow" style="margin-bottom:6px">From the seller</div><p class="desc">${esc(l.desc)}</p></div>`:""}
+      ${chat}
+      <div class="notice plain" style="font-size:13.5px">${I.shield}<span>Meet in a public place. Check it powers on, shows the battery health listed, and is signed out of Find My before you pay.</span></div>
     </div>
+  </div>
+  ${similar.length?`<section class="section"><div class="sechead"><h2>More ${esc(catOf(l.cat).p)}${l.state?" near "+esc(STATES[l.state]||""):""}</h2></div><div class="grid">${similar.map(x=>cardHTML(x)).join("")}</div></section>`:""}
   </div>`;
 }
+function pingView(l){
+  const k="as_v_"+l.id;
+  try{ if(sessionStorage.getItem(k)) return; sessionStorage.setItem(k,"1"); }catch(e){}
+  if(!isMe(l.sellerId)) api("POST",`/api/listings/${encodeURIComponent(l.id)}/view`).catch(()=>{});
+}
 
-const blankDraft = () => ({title:"",cat:"iphone",storage:"",grade:"A",battery:"",lockOff:true,price:"",area:"",desc:"",photos:[]});
-
+/* ---------- views: sell ---------- */
+const blankDraft = () => ({title:"",cat:"iphone",storage:"",grade:"A",battery:"",lockOff:true,price:"",state:(S.me&&S.me.state)||S.loc.state||"",city:(S.me&&S.me.city)||S.loc.city||"",desc:"",photos:[]});
+function draftChecks(d){
+  return [
+    ["Add at least one photo", d.photos.length>0],
+    ["Name the model", !!d.title.trim()],
+    ["Set a price", Number(d.price)>0],
+    ["Choose your state", !!d.state],
+    ["Enter your city", !!d.city.trim()],
+  ];
+}
 function viewSell(editId){
-  if(!S.me) return goSignIn(), "";
+  if(!S.me){ goSignIn(); return ""; }
   if(!S.draft || S.draft._for!==(editId||"new")){
-    const l = editId && findListing(editId);
-    if(editId && !l) return `<div class="empty"><h2>${S.loaded?"This listing was removed":"Loading…"}</h2></div>`;
-    if(l && !isMe(l.sellerId)) return `<div class="empty"><h2>Only the seller can edit this listing</h2><a class="btn" href="#item-${esc(l.id)}">Back to listing</a></div>`;
-    S.draft = l ? {...l, battery:l.battery??"", photos:[...(l.photos||[])], _for:editId} : {...blankDraft(), _for:"new"};
+    if(editId){
+      const l = findListing(editId);
+      if(!l) return `<div class="wrap" style="padding-block:30px"><div class="empty"><h2>${S.loaded?"This listing was removed":"Loading…"}</h2></div></div>`;
+      if(!isMe(l.sellerId)) return `<div class="wrap" style="padding-block:30px"><div class="empty"><h2>Only the seller can edit this listing</h2><a class="btn" href="#item-${esc(l.id)}">Back to listing</a></div></div>`;
+      S.draft = {title:l.title,cat:l.cat,storage:l.storage,grade:l.grade,battery:l.battery??"",lockOff:l.lockOff,price:l.price,state:l.state,city:l.city,desc:l.desc,photos:[...(l.photos||[])],status:l.status,_for:editId};
+    } else {
+      const saved = lsGet("as_draft", null);
+      S.draft = saved ? {...blankDraft(), ...saved, _for:"new"} : {...blankDraft(), _for:"new"};
+    }
     S.draftErr="";
   }
-  const d=S.draft;
+  const d=S.draft, checks=draftChecks(d), done=checks.filter(c=>c[1]).length;
   const preview = {...d, id:"preview", price:Number(d.price)||0, battery:d.battery===""?null:Number(d.battery), createdAt:Date.now(), status:"active", title:d.title||"Your device title"};
-  return `<a class="btn ghost back" href="${editId?"#item-"+esc(editId):"#browse"}">← ${editId?"Back to listing":"All devices"}</a>
+  const uploadingTiles = Array.from({length:S.uploading},()=>`<figure class="uploading"><span class="spin" aria-label="Uploading"></span></figure>`).join("");
+  return `<div class="wrap sellwrap">
+  <nav class="crumbs"><a href="${editId?"#item-"+esc(editId):"#home"}">${editId?"Back to listing":"Home"}</a> / <span>${editId?"Edit":"Sell"}</span></nav>
+  <div class="pagehead" style="padding-top:6px"><div><div class="eyebrow">${editId?"Edit listing":"New listing"}</div><h1>${editId?"Update your device":"Sell your Apple device"}</h1></div>${!editId&&(d.title||d.photos.length)?`<button class="btn sm ghost" data-act="clearDraft">Start over</button>`:""}</div>
   <div class="sell">
     <form class="form" data-form="sell" novalidate>
-      <div><div class="eyebrow">${editId?"Edit listing":"New listing"}</div><h1 style="font-size:28px">${editId?"Update your device":"Sell a used Apple device"}</h1></div>
-      <fieldset style="border:0;padding:0;margin:0"><legend class="eyebrow" style="padding:0">Device type</legend>
-        <div class="seg" style="margin-top:6px">${CATS.map(c=>`<label><input type="radio" name="cat" value="${c.k}" ${d.cat===c.k?"checked":""}>${c.n}</label>`).join("")}</div></fieldset>
-      <div class="field"><label for="title">Model and colour</label><input id="title" name="title" maxlength="80" placeholder="iPhone 13, Midnight" value="${esc(d.title)}"></div>
-      <div class="row2">
+      <section class="fsec" aria-labelledby="h-photos"><h2 id="h-photos">Photos</h2>
+        <div class="drop" id="drop" data-act="pickPhotos" role="button" tabindex="0" aria-label="Add photos">
+          <span class="ic">${I.upload}</span><b>Drag photos here or click to upload</b>
+          <span class="muted" style="font-size:13.5px">Up to 8 · JPEG, PNG or HEIC from your phone · First photo is the cover</span>
+        </div>
+        <input id="photoIn" type="file" accept="image/*" multiple hidden>
+        ${d.photos.length||S.uploading?`<div class="photos" id="photoGrid">${d.photos.map((p,i)=>`<figure draggable="true" data-i="${i}"><img src="${esc(photoSrc(p))}" alt="Photo ${i+1}">${i===0?'<span class="cover">Cover</span>':""}<div class="ctl">${i>0?`<button type="button" data-act="movePhoto" data-i="${i}" data-d="-1" aria-label="Move photo ${i+1} earlier">‹</button>`:""}${i<d.photos.length-1?`<button type="button" data-act="movePhoto" data-i="${i}" data-d="1" aria-label="Move photo ${i+1} later">›</button>`:""}<button type="button" data-act="rmPhoto" data-i="${i}" aria-label="Remove photo ${i+1}">×</button></div></figure>`).join("")}${uploadingTiles}</div><span class="muted" style="font-size:12.5px">Drag to reorder. Show the screen turned on, the back, and any marks.</span>`:""}
+      </section>
+
+      <section class="fsec" aria-labelledby="h-dev"><h2 id="h-dev">Device</h2>
+        <div class="tiles" role="radiogroup" aria-label="Device type">${CATS.map(c=>`<label><input type="radio" name="cat" value="${c.k}" ${d.cat===c.k?"checked":""}>${ICON[c.k]}${c.n}</label>`).join("")}</div>
+        <div class="field"><label for="title">Model and colour</label><input id="title" name="title" maxlength="80" list="models" placeholder="${esc((MODELS[d.cat]||[])[4]||"Model")}, Blue" value="${esc(d.title)}" autocomplete="off">
+          <datalist id="models">${(MODELS[d.cat]||[]).map(m=>`<option value="${esc(m)}">`).join("")}</datalist><span class="hint">Start typing to pick a model, then add the colour.</span></div>
         <div class="field"><label for="storage">Storage</label><select id="storage" name="storage">${["","64 GB","128 GB","256 GB","512 GB","1 TB","2 TB"].map(s=>`<option value="${s}" ${d.storage===s?"selected":""}>${s||"Not applicable"}</option>`).join("")}</select></div>
-        <div class="field"><label for="battery">Battery health %</label><input id="battery" name="battery" type="number" min="0" max="100" inputmode="numeric" placeholder="e.g. 89" value="${esc(d.battery)}"><span class="hint">Settings → Battery → Battery Health. Leave blank for AirPods.</span></div>
-      </div>
-      <fieldset style="border:0;padding:0;margin:0"><legend class="eyebrow" style="padding:0">Condition</legend>
-        <div class="seg" style="margin-top:6px">${Object.entries(GRADES).map(([k,g])=>`<label title="${esc(g.d)}"><input type="radio" name="grade" value="${k}" ${d.grade===k?"checked":""}>${g.n}</label>`).join("")}</div>
-        <span class="hint muted" style="font-size:12.5px">${esc((GRADES[d.grade]||GRADES.A).d)}</span></fieldset>
-      <label class="check"><input type="checkbox" name="lockOff" id="lockOff" ${d.lockOff?"checked":""}> Activation Lock is off (signed out of Find My)</label>
-      <div class="row2">
-        <div class="field"><label for="price">Price (USD)</label><input id="price" name="price" type="number" min="1" step="5" inputmode="numeric" placeholder="450" value="${esc(d.price)}"></div>
-        <div class="field"><label for="area">Pickup area</label><input id="area" name="area" maxlength="40" placeholder="Neighbourhood or landmark" value="${esc(d.area)}"></div>
-      </div>
-      <div class="field"><label for="desc">Details</label><textarea id="desc" name="desc" rows="4" maxlength="800" placeholder="What's included, any marks, repairs, AppleCare…">${esc(d.desc)}</textarea></div>
-      <div class="drop">
-        <b>Photos</b><span class="muted" style="font-size:13.5px">Up to 6. Show the screen on, the back, and any marks.</span>
-        <div class="prevs">${d.photos.map((p,i)=>`<figure><img src="${esc(photoSrc(p))}" alt="Photo ${i+1}"><button type="button" data-act="rmPhoto" data-i="${i}" aria-label="Remove photo ${i+1}">×</button></figure>`).join("")}</div>
-        ${d.photos.length<6?`<label class="btn" for="photoIn">${S.busy?"Uploading…":"Add photos"}</label><input id="photoIn" type="file" accept="image/*" multiple hidden>`:""}
-      </div>
+      </section>
+
+      <section class="fsec" aria-labelledby="h-cond"><h2 id="h-cond">Condition</h2>
+        <div class="grades" role="radiogroup" aria-label="Condition">${Object.entries(GRADES).map(([k,g])=>`<label><input type="radio" name="grade" value="${k}" ${d.grade===k?"checked":""}><b>${g.n}</b><span>${g.d}</span></label>`).join("")}</div>
+        <div class="field"><label for="battery">Battery health</label>
+          <div class="range"><input type="range" id="battRange" min="50" max="100" value="${d.battery===""?100:Number(d.battery)}" aria-label="Battery health slider" ${d.battery===""?"disabled":""}><output id="battOut">${d.battery===""?"—":d.battery+"%"}</output></div>
+          <label class="check" style="font-size:13.5px"><input type="checkbox" id="battNA" ${d.battery===""?"checked":""}> Not shown on this device (AirPods, accessories, Macs without a reading)</label>
+          <span class="hint">On iPhone: Settings → Battery → Battery Health. On Mac: System Settings → Battery.</span></div>
+        <label class="toggle"><input type="checkbox" name="lockOff" id="lockOff" ${d.lockOff?"checked":""}><span><b>Activation Lock is off</b><span class="muted" style="display:block;font-size:13.5px">You've signed out of iCloud and turned off Find My. Buyers filter for this.</span></span></label>
+      </section>
+
+      <section class="fsec" aria-labelledby="h-price"><h2 id="h-price">Price and pickup</h2>
+        <div class="field"><label for="price">Price</label><div class="prefix"><span>$</span><input id="price" name="price" type="number" min="1" step="5" inputmode="numeric" placeholder="450" value="${esc(d.price)}"></div>${similarPriceHint(d)}</div>
+        <div class="row2">
+          <div class="field"><label for="state">State</label><select id="state" name="state">${stateOptions(d.state)}</select></div>
+          <div class="field"><label for="city">City</label><input id="city" name="city" list="sellCities" maxlength="40" placeholder="${esc((CITIES[d.state]||["City"])[0])}" value="${esc(d.city)}" autocomplete="address-level2">${d.state?cityList("sellCities",d.state):""}</div>
+        </div>
+        <span class="hint muted" style="font-size:12.5px">Only your city and state are shown. Share an exact meetup spot in chat.</span>
+      </section>
+
+      <section class="fsec" aria-labelledby="h-desc"><h2 id="h-desc">Details</h2>
+        <div class="field"><label for="desc">Description <span class="muted" style="font-weight:400">(optional)</span></label><textarea id="desc" name="desc" rows="5" maxlength="1200" placeholder="What's included (box, charger, case), any repairs, AppleCare, why you're selling…">${esc(d.desc)}</textarea><span class="hint" id="descCount">${(d.desc||"").length} / 1200</span></div>
+      </section>
       ${S.draftErr?`<p class="err" role="alert">${esc(S.draftErr)}</p>`:""}
-      <div class="actions"><button class="btn primary" type="submit" ${S.busy?"disabled":""}>${S.busy?"Saving…":editId?"Save changes":"Post listing"}</button><a class="btn ghost" href="${editId?"#item-"+esc(editId):"#browse"}">Cancel</a></div>
+      <div class="actions"><button class="btn primary lg" type="submit" ${S.busy||S.uploading?"disabled":""}>${S.busy?"Saving…":S.uploading?"Waiting for photos…":editId?"Save changes":"Post listing"}</button><a class="btn ghost lg" href="${editId?"#item-"+esc(editId):"#home"}">Cancel</a></div>
     </form>
-    <aside class="preview-col"><div class="eyebrow">Preview</div><div id="previewCard" style="max-width:300px">${cardHTML(preview,true)}</div>
-      <p class="muted" style="font-size:13.5px;max-width:34ch">Buyers pay at pickup. Meet somewhere public and let them check the device works before money changes hands.</p></aside>
+    <aside class="preview-col">
+      <div class="progress"><div style="display:flex;justify-content:space-between"><b>${done===checks.length?"Ready to post":"Almost there"}</b><span class="muted mono">${done}/${checks.length}</span></div>
+        <div class="bar-p"><i style="width:${done/checks.length*100}%"></i></div>
+        <ul>${checks.map(([t,ok])=>`<li class="${ok?"done":""}"><i></i>${t}</li>`).join("")}</ul></div>
+      <div class="eyebrow">Preview</div><div id="previewCard">${cardHTML(preview,{preview:true})}</div>
+    </aside>
+  </div></div>`;
+}
+function similarPriceHint(d){
+  const t=(d.title||"").toLowerCase().replace(/,.*$/,"").trim();
+  if(t.length<5) return `<span class="hint">Buyers pay you in person at pickup.</span>`;
+  const xs=S.listings.filter(l=>l.cat===d.cat && l.title.toLowerCase().startsWith(t) && l.id!==d._for).map(l=>l.price).sort((a,b)=>a-b);
+  if(xs.length<2) return `<span class="hint">Buyers pay you in person at pickup.</span>`;
+  return `<span class="hint">Similar listings: ${money(xs[0])} to ${money(xs[xs.length-1])} (${xs.length} listed)</span>`;
+}
+function saveDraftLocal(){ if(S.draft && S.draft._for==="new"){ const {_for,...rest}=S.draft; lsSet("as_draft", rest); } }
+
+/* ---------- views: mine / saved / seller / account ---------- */
+function rowHTML(l){
+  const p=(l.photos||[])[0];
+  return `<div class="rowi">
+    <a class="th" href="#item-${esc(l.id)}" aria-label="${esc(l.title)}">${p?`<img src="${esc(photoSrc(p))}" alt="" loading="lazy">`:ICON[l.cat]||ICON.other}</a>
+    <div style="min-width:0">
+      <h3><a href="#item-${esc(l.id)}">${esc(l.title)}</a></h3>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:2px"><b>${money(l.price)}</b>${l.status!=="active"?`<span class="status ${l.status}" style="font-size:10px">${l.status}</span>`:""}<span class="muted" style="font-size:13px;display:inline-flex;gap:4px;align-items:center">${I.pin}${esc(placeLabel(l.city,l.state))}</span></div>
+      <div class="rowstats"><span>${I.eye}${l.views||0} views</span><span>${I.chat}${l.threadCount||0} chats</span><span>${I.heart.replace('width="18" height="18"','width="15" height="15"')}${l.saveCount||0} saves</span><span>Listed ${ago(l.createdAt)}</span></div>
+    </div>
+    <div class="actions">
+      <a class="btn sm" href="#edit-${esc(l.id)}">Edit</a>
+      ${l.status==="sold"?`<button class="btn sm" data-act="status" data-id="${esc(l.id)}" data-s="active">Relist</button>`:`<button class="btn sm primary" data-act="status" data-id="${esc(l.id)}" data-s="sold">Mark sold</button>`}
+      <button class="btn sm ghost danger" data-act="askDel" data-id="${esc(l.id)}">Delete</button>
+    </div></div>`;
+}
+function viewMine(){
+  if(!S.me){ goSignIn(); return ""; }
+  const all = S.mine||[];
+  const by = s => all.filter(l=>l.status===s);
+  const tabs=[["active","Active"],["reserved","Reserved"],["sold","Sold"]];
+  const xs = by(S.mineTab);
+  return `<div class="wrap">
+    <div class="pagehead"><div><div class="eyebrow">Selling</div><h1>My listings</h1></div><div class="actions"><a class="btn" href="#account">Account settings</a><a class="btn primary" href="#sell">Sell another</a></div></div>
+    <div class="tabs" role="tablist">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${S.mineTab===k}" data-act="mineTab" data-k="${k}">${n} <span class="mono muted">${by(k).length}</span></button>`).join("")}</div>
+    ${S.mine==null?`<div class="rows"><p class="muted">Loading…</p></div>`: xs.length?`<div class="rows">${xs.map(rowHTML).join("")}</div>`
+      : `<div class="empty" style="margin-bottom:50px"><h2>${S.mineTab==="active"?"Nothing for sale right now":S.mineTab==="reserved"?"Nothing reserved":"Nothing sold yet"}</h2><p class="muted">${S.mineTab==="active"?"List a device and it will show up for buyers in your state.":"Listings move here as buyers reserve and buy them."}</p>${S.mineTab==="active"?`<a class="btn primary" href="#sell">Sell a device</a>`:""}</div>`}
   </div>`;
 }
+function viewSaved(){
+  if(!S.me){ goSignIn(); return ""; }
+  const xs = S.listings.filter(l=>S.saved.has(l.id));
+  return `<div class="wrap"><div class="pagehead"><div><div class="eyebrow">Your list</div><h1>Saved devices</h1></div></div>
+    ${xs.length?`<div class="grid" style="padding-bottom:50px">${xs.map(l=>cardHTML(l)).join("")}</div>`:`<div class="empty" style="margin-bottom:50px"><div class="ic">${I.heart}</div><h2>Nothing saved yet</h2><p class="muted">Tap the heart on any listing to keep it here and compare later.</p><a class="btn primary" href="#shop">Browse devices</a></div>`}</div>`;
+}
+function viewSeller(id){
+  const p = S.sellers[id];
+  if(p===undefined){ loadSeller(id); }
+  const xs = S.listings.filter(l=>l.sellerId===id && (isMe(id) || l.status!=="sold"));
+  if(p===null) return `<div class="wrap" style="padding-block:30px"><div class="empty"><h2>This seller's account no longer exists</h2><a class="btn" href="#shop">Browse devices</a></div></div>`;
+  const name = p ? showName(p.id,p.name) : (xs[0]?xs[0].sellerName:"Seller");
+  return `<div class="wrap">
+    <div class="profile">${avatar(id,p?p.name:name,72)}<div class="grow"><h1>${esc(name)}</h1><div class="muted" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">${p&&p.state?`<span style="display:inline-flex;gap:4px;align-items:center">${I.pin}${esc(placeLabel(p.city,p.state))}</span>`:""}${p?`<span>Member since ${new Date(p.createdAt).toLocaleDateString("en-US",{month:"long",year:"numeric"})}</span>`:""}</div></div>
+      ${p?`<div class="kpis"><div><b>${p.active}</b><span>For sale</span></div><div><b>${p.sold}</b><span>Sold</span></div></div>`:""}${isMe(id)?`<a class="btn" href="#account">Edit profile</a>`:""}</div>
+    <div class="sechead"><h2>${isMe(id)?"Your listings":"Listings"}</h2></div>
+    ${xs.length?`<div class="grid" style="padding-bottom:50px">${xs.map(l=>cardHTML(l)).join("")}</div>`:`<div class="empty" style="margin-bottom:50px"><h2>No devices for sale right now</h2></div>`}
+  </div>`;
+}
+function viewAccount(){
+  if(!S.me){ goSignIn(); return ""; }
+  const m=S.me;
+  return `<div class="wrap narrow">
+    <div class="pagehead"><div><div class="eyebrow">Account</div><h1>Your profile</h1></div></div>
+    <form class="card-form" data-form="account">
+      <div class="field"><label for="accName">Display name</label><input id="accName" maxlength="40" value="${esc(m.name)}" autocomplete="name"><span class="hint">Shown to buyers and sellers.</span></div>
+      <div class="row2">
+        <div class="field"><label for="accState">State</label><select id="accState">${stateOptions(m.state,"Not set")}</select></div>
+        <div class="field"><label for="accCity">City</label><input id="accCity" list="accCities" maxlength="40" value="${esc(m.city)}" autocomplete="address-level2">${m.state?cityList("accCities",m.state):""}</div>
+      </div>
+      <span class="hint muted" style="font-size:13px">Your location fills in new listings and sets what you see first when you browse.</span>
+      <div class="field"><label>Email</label><input value="${esc(m.email||"")}" disabled></div>
+      ${S.acctMsg?`<p class="${S.acctMsg.startsWith("Saved")?"muted":"err"}" role="status">${esc(S.acctMsg)}</p>`:""}
+      <div class="actions"><button class="btn primary" type="submit" ${S.busy?"disabled":""}>Save changes</button><a class="btn ghost" href="#seller-${esc(m.id)}">View public profile</a><button class="btn ghost danger" type="button" data-act="logout" style="margin-left:auto">Sign out</button></div>
+    </form></div>`;
+}
 
+/* ---------- views: inbox ---------- */
 function viewInbox(){
-  if(!S.me) return goSignIn(), "";
-  if(!S.threads.length) return `<div class="listhead"><h1>Messages</h1></div><div class="empty"><h2>No conversations yet</h2><p class="muted">Message a seller from any listing, or post a device and buyers will reach you here.</p><a class="btn primary" href="#browse">Browse devices</a></div>`;
+  if(!S.me){ goSignIn(); return ""; }
+  if(!S.threads.length) return `<div class="wrap"><div class="pagehead"><h1>Messages</h1></div><div class="empty" style="margin-bottom:50px"><div class="ic">${I.chat}</div><h2>No conversations yet</h2><p class="muted">Message a seller from any listing, or post a device and buyers will reach you here.</p><div class="actions"><a class="btn primary" href="#shop">Browse devices</a><a class="btn" href="#sell">Sell a device</a></div></div></div>`;
   const cur = S.threads.find(t=>t.id===S.activeThread) || S.threads[0];
   S.activeThread=cur.id; wantMsgs(cur.id);
   const l = findListing(cur.listingId);
-  return `<div class="listhead"><h1>Messages</h1></div>
+  return `<div class="wrap"><div class="pagehead"><h1>Messages</h1></div>
   <div class="inbox">
-    <div class="threads">${S.threads.map(t=>{ const selling=isMe(t.sellerId); const oid=selling?t.buyerId:t.sellerId, on=selling?t.buyerName:t.sellerName;
-      return `<button class="th" data-act="pick" data-tid="${esc(t.id)}" aria-current="${t.id===cur.id}">${avatar(oid,on,34)}<span class="tx"><div><b>${esc(on||"Someone")}</b> <span class="role">${selling?"buying":"selling"}</span></div><div class="muted" style="font-size:13px">${esc(t.listingTitle)} · ${esc(t.last)}</div></span>${t.unread&&t.id!==cur.id?'<span class="badge">•</span>':""}</button>`; }).join("")}</div>
+    <div class="threads">${S.threads.map(t=>{ const selling=isMe(t.sellerId); const on=selling?t.buyerName:t.sellerName;
+      return `<button class="th-i" data-act="pick" data-tid="${esc(t.id)}" aria-current="${t.id===cur.id}"><span class="tthumb">${t.listingPhoto?`<img src="${esc(photoSrc(t.listingPhoto))}" alt="">`:ICON.other}</span><span class="tx"><div><b>${esc(on||"Someone")}</b> <span class="role">${selling?"Buyer":"Seller"}</span></div><div style="font-size:13px">${esc(t.listingTitle)}</div><div class="muted" style="font-size:13px">${esc(t.last)} · ${ago(t.updatedAt)}</div></span>${t.unread&&t.id!==cur.id?'<span class="unreaddot" aria-label="Unread"></span>':""}</button>`; }).join("")}</div>
     <div style="min-width:0">${chatHTML(cur,l,{link:true})}</div>
-  </div>`;
+  </div></div>`;
 }
 
+/* ---------- views: sign in ---------- */
 function viewSignIn(){
-  if(S.me){ location.hash = S.next || "browse"; return ""; }
+  if(S.me){ location.hash = S.next || "home"; return ""; }
   const up = S.authMode==="up";
-  return `<div class="auth">
-    <form class="form" data-form="auth" novalidate>
-      <div><div class="eyebrow">${up?"Create an account":"Welcome back"}</div><h1 style="font-size:28px">${up?"Join Applesmart":"Sign in to Applesmart"}</h1></div>
-      ${up?`<div class="field"><label for="aname">Your name</label><input id="aname" name="name" autocomplete="name" maxlength="40" placeholder="Shown to buyers and sellers"></div>`:""}
-      <div class="field"><label for="aemail">Email</label><input id="aemail" name="email" type="email" autocomplete="email" required></div>
-      <div class="field"><label for="apass">Password</label><input id="apass" name="password" type="password" autocomplete="${up?"new-password":"current-password"}" minlength="8" required>${up?'<span class="hint">At least 8 characters.</span>':""}</div>
+  return `<div class="wrap"><div class="auth">
+    <div class="pitch"><h2>Used Apple, nearby and checked.</h2><ul>
+      <li>${I.check}<span>Battery health, condition and Activation Lock on every listing</span></li>
+      <li>${I.check}<span>Browse by state and city, from Seattle to Miami</span></li>
+      <li>${I.check}<span>Chat, make offers, and pay in person at pickup</span></li></ul></div>
+    <form data-form="auth" novalidate>
+      <div><div class="eyebrow">${up?"Create an account":"Welcome back"}</div><h1 style="font-size:28px;margin-top:4px">${up?"Join Applesmart":"Sign in"}</h1></div>
+      ${up?`<div class="field"><label for="aname">Your name</label><input id="aname" autocomplete="name" maxlength="40" placeholder="Shown to buyers and sellers"></div>
+      <div class="row2"><div class="field"><label for="astate">State</label><select id="astate">${stateOptions(S.loc.state,"Choose later")}</select></div>
+      <div class="field"><label for="acity">City</label><input id="acity" maxlength="40" autocomplete="address-level2" value="${esc(S.loc.city)}"></div></div>`:""}
+      <div class="field"><label for="aemail">Email</label><input id="aemail" type="email" autocomplete="email" required></div>
+      <div class="field"><label for="apass">Password</label><input id="apass" type="password" autocomplete="${up?"new-password":"current-password"}" minlength="8" required>${up?'<span class="hint">At least 8 characters.</span>':""}</div>
       ${S.authErr?`<p class="err" role="alert">${esc(S.authErr)}</p>`:""}
-      <button class="btn primary" type="submit" ${S.busy?"disabled":""} style="justify-content:center">${S.busy?"One moment…":up?"Create account":"Sign in"}</button>
-      <p class="muted" style="margin:0;font-size:14px">${up?"Already have an account?":"New here?"} <button type="button" class="linkbtn" data-act="authMode">${up?"Sign in":"Create an account"}</button></p>
-    </form></div>`;
+      <button class="btn primary lg block" type="submit" ${S.busy?"disabled":""}>${S.busy?"One moment…":up?"Create account":"Sign in"}</button>
+      <p class="muted" style="font-size:14px">${up?"Already have an account?":"New to Applesmart?"} <button type="button" class="linkbtn" data-act="authMode">${up?"Sign in":"Create an account"}</button></p>
+    </form></div></div>`;
+}
+
+/* ---------- dialogs ---------- */
+const dlg = () => $("#dlg");
+function openDialog(html){ const d=dlg(); d.innerHTML=html; if(!d.open) d.showModal(); const f=d.querySelector("input,select,button"); if(f) f.focus(); }
+function closeDialog(){ const d=dlg(); if(d.open) d.close(); }
+function locDialog(){
+  const st=S.loc.state;
+  openDialog(`<form class="dlg" data-form="loc"><h2 id="dlgTitle">Where are you shopping?</h2>
+    <p class="muted" style="font-size:14px">Applesmart is local pickup only, so pick the area you can travel to.</p>
+    <div class="field"><label for="locState">State</label><select id="locState">${stateOptions(st,"All of the US")}</select></div>
+    <div class="field" ${st?"":"hidden"} id="locCityWrap"><label for="locCity">City <span class="muted" style="font-weight:400">(optional)</span></label><input id="locCity" list="locCities" value="${esc(S.loc.city)}" placeholder="Any city">${st?cityList("locCities",st):`<datalist id="locCities"></datalist>`}</div>
+    <div class="dact">${S.me&&S.me.state?`<button type="button" class="btn ghost" data-act="useMyLoc" style="margin-right:auto">Use ${esc(placeLabel(S.me.city,S.me.state))}</button>`:""}<button type="button" class="btn ghost" data-act="closeDlg">Cancel</button><button class="btn primary" type="submit">Show listings</button></div></form>`);
+}
+function reportDialog(id){
+  if(!S.me) return goSignIn();
+  openDialog(`<form class="dlg" data-form="report" data-id="${esc(id)}"><h2 id="dlgTitle">Report this listing</h2>
+    <div class="radios">${REASONS.map(([k,t],i)=>`<label><input type="radio" name="reason" value="${k}" ${i===0?"checked":""}>${t}</label>`).join("")}</div>
+    <div class="field"><label for="repNote">Anything else? <span class="muted" style="font-weight:400">(optional)</span></label><textarea id="repNote" maxlength="500" rows="3"></textarea></div>
+    <div class="dact"><button type="button" class="btn ghost" data-act="closeDlg">Cancel</button><button class="btn primary" type="submit">Send report</button></div></form>`);
+}
+function confirmDialog(text, action, id){
+  openDialog(`<div class="dlg"><h2 id="dlgTitle">${esc(text)}</h2><p class="muted">This can't be undone. Photos and conversations about it are removed too.</p>
+    <div class="dact"><button class="btn ghost" data-act="closeDlg">Keep it</button><button class="btn dark" data-act="${action}" data-id="${esc(id)}">Delete listing</button></div></div>`);
 }
 
 /* ---------- render ---------- */
 function render(soft){
   const app=$("#app");
-  const ae=document.activeElement, fid=ae&&ae.id, sel=fid&&ae.selectionStart!=null?[ae.selectionStart,ae.selectionEnd]:null, val=fid&&ae.value;
+  const ae=document.activeElement, fid=ae&&ae.id&&app.contains(ae)?ae.id:null, sel=fid&&ae.selectionStart!=null?[ae.selectionStart,ae.selectionEnd]:null, val=fid?ae.value:null;
   const msgsEl=$("#msgs"), atBottom = msgsEl ? (msgsEl.scrollHeight-msgsEl.scrollTop-msgsEl.clientHeight<40) : true;
-  let html;
-  if(S.route==="item") html=viewItem(S.param);
-  else if(S.route==="sell") html=viewSell(null);
-  else if(S.route==="edit") html=viewSell(S.param);
-  else if(S.route==="inbox") html=viewInbox();
-  else if(S.route==="signin") html=viewSignIn();
-  else html=viewBrowse();
-  app.innerHTML=html;
-  if(fid){ const el=document.getElementById(fid); if(el && el!==document.activeElement){ if((el.id==="msgText"||el.id==="aemail"||el.id==="apass"||el.id==="aname") && val!=null) el.value=val; el.focus({preventScroll:true}); if(sel) try{el.setSelectionRange(sel[0],sel[1]);}catch(e){} } }
+  const views = {home:viewHome, shop:viewShop, item:()=>viewItem(S.param), sell:()=>viewSell(null), edit:()=>viewSell(S.param), mine:viewMine, saved:viewSaved, seller:()=>viewSeller(S.param), account:viewAccount, inbox:viewInbox, signin:viewSignIn};
+  app.innerHTML=(views[S.route]||viewHome)();
+  if(fid){ const el=document.getElementById(fid); if(el && el!==document.activeElement){ if(["msgText","aemail","apass","aname","acity","accName","accCity","fCity"].includes(fid) && val!=null) el.value=val; el.focus({preventScroll:true}); if(sel) try{el.setSelectionRange(sel[0],sel[1]);}catch(e){} } }
   const m=$("#msgs"); if(m && (atBottom||!soft)) m.scrollTop=m.scrollHeight;
-  paintHeader();
+  paintChrome();
 }
-function paintHeader(){
+function paintChrome(){
   const n=S.threads.filter(t=>t.unread).length;
   $("#unread").innerHTML = n?`<span class="badge">${n}</span>`:"";
+  $("#unreadTab").innerHTML = n?`<span class="badge">${n}</span>`:"";
+  $("#locBtn").innerHTML = `${I.pin}<span>${esc(locLabel())}</span>`;
   $("#who").innerHTML = S.me
-    ? `<span title="Signed in as ${esc(S.me.name)}">${avatar(S.me.id,S.me.name,30)}</span><button class="btn ghost" data-act="logout">Sign out</button>`
-    : `<a class="btn" href="#signin">Sign in</a>`;
+    ? `<button class="avbtn" data-act="menu" aria-haspopup="true" aria-expanded="${S.menuOpen}" aria-label="Account menu">${avatar(S.me.id,S.me.name,36)}</button>
+       ${S.menuOpen?`<div class="menu" role="menu"><div class="mhead"><b>${esc(S.me.name)}</b><div class="muted" style="font-size:13px">${esc(placeLabel(S.me.city,S.me.state)||S.me.email||"")}</div></div>
+         <a href="#mine" role="menuitem">My listings</a><a href="#saved" role="menuitem">Saved</a><a href="#inbox" role="menuitem">Messages</a><a href="#seller-${esc(S.me.id)}" role="menuitem">Public profile</a><a href="#account" role="menuitem">Account settings</a><button data-act="logout" role="menuitem">Sign out</button></div>`:""}`
+    : `<a class="btn sm" href="#signin">Sign in</a>`;
+  const tab = {home:"home",shop:"shop",item:"shop",sell:"sell",edit:"sell",inbox:"inbox",mine:"mine",account:"mine",saved:"mine",signin:"mine"}[S.route];
+  $$(".tabbar a").forEach(a=>a.classList.toggle("on", a.dataset.tab===tab));
+  const tq=$("#q"); if(tq && document.activeElement!==tq) tq.value = S.route==="shop" ? S.f.q : "";
 }
-function goSignIn(){ S.next = location.hash.slice(1); if(location.hash!=="#signin") location.hash="signin"; }
+function goSignIn(){ const h=location.hash.slice(1); S.next = h && h!=="signin" ? h : S.next; if(location.hash!=="#signin") location.hash="signin"; }
 
 /* ---------- routing ---------- */
+function applyShopParams(qs){
+  const p=new URLSearchParams(qs), f=S.f;
+  // a link that names a place sets it; links without one keep the shopper's current location
+  if(p.has("state")) setLoc(STATES[String(p.get("state")).toUpperCase()] ? String(p.get("state")).toUpperCase() : "", p.get("city")||"");
+  if(!qs) return;
+  f.q=p.get("q")||""; f.cat=p.get("cat")||""; f.min=p.get("min")||""; f.max=p.get("max")||""; f.batt=p.get("batt")||"";
+  f.grades=new Set((p.get("grade")||"").split("").filter(g=>GRADES[g])); f.lockOnly=p.get("lock")==="1"; f.sort=p.get("sort")||"new";
+}
 function route(){
-  const h=(location.hash||"").slice(1);
+  const h=decodeURIComponent((location.hash||"").slice(1));
   const prev=S.route+S.param;
-  if(h.startsWith("item-")){ S.route="item"; S.param=h.slice(5); }
-  else if(h.startsWith("edit-")){ S.route="edit"; S.param=h.slice(5); }
-  else if(["sell","inbox","signin"].includes(h)){ S.route=h; S.param=""; }
-  else { S.route="browse"; S.param=""; }
-  if(prev!==S.route+S.param){ S.photoIx=0; S.confirm=null; S.authErr=""; if(S.route!=="inbox") S.activeThread=null; if(S.route!=="sell"&&S.route!=="edit") S.draft=null; window.scrollTo(0,0); }
+  const [name, qs] = h.split("?");
+  S.menuOpen=false;
+  if(name.startsWith("item-")){ S.route="item"; S.param=name.slice(5); }
+  else if(name.startsWith("edit-")){ S.route="edit"; S.param=name.slice(5); }
+  else if(name.startsWith("seller-")){ S.route="seller"; S.param=name.slice(7); }
+  else if(name==="shop"){ S.route="shop"; S.param=""; applyShopParams(qs||""); }
+  else if(["sell","inbox","signin","mine","saved","account"].includes(name)){ S.route=name; S.param=""; }
+  else { S.route="home"; S.param=""; }
+  if(prev!==S.route+S.param){
+    S.photoIx=0; S.authErr=""; S.acctMsg=""; S.railOpen=false;
+    if(S.route!=="inbox") S.activeThread=null;
+    if(S.route!=="sell"&&S.route!=="edit") S.draft=null;
+    if(S.route==="mine"||S.route==="edit") loadMine();
+    window.scrollTo(0,0);
+  }
   render();
+  if(prev!==S.route+S.param) $("#app").focus({preventScroll:true});
 }
 addEventListener("hashchange", route);
 
-/* ---------- data loading & polling ---------- */
-async function loadListings(){ try{ S.listings = await api("GET","/api/listings"); S.loaded=true; render(true); }catch(e){ S.loaded=true; render(true); } }
+/* ---------- data ---------- */
+async function loadListings(){ try{ const xs=await api("GET","/api/listings"); const changed=JSON.stringify(xs)!==JSON.stringify(S.listings); S.listings=xs; const first=!S.loaded; S.loaded=true; if(changed||first) render(true); }catch(e){ S.loaded=true; render(true); } }
 async function loadThreads(){ if(!S.me) return; try{ const ts=await api("GET","/api/threads"); if(JSON.stringify(ts)!==JSON.stringify(S.threads)){ S.threads=ts; render(true); } }catch(e){ if(e.status===401){ S.me=null; render(); } } }
 async function loadSaved(){ if(!S.me) return; try{ S.saved=new Set(await api("GET","/api/saved")); render(true); }catch(e){} }
+async function loadMine(){ if(!S.me) return; try{ S.mine=await api("GET","/api/mine"); if(["mine","edit"].includes(S.route)) render(true); }catch(e){} }
+async function loadSeller(id){ S.sellers[id]=false; try{ S.sellers[id]=await api("GET",`/api/users/${encodeURIComponent(id)}`); }catch(e){ S.sellers[id]= e.status===404?null:false; } if(S.route==="seller") render(true); }
 async function loadMsgs(){
   const tid=S.msgTid; if(!tid||!S.me) return;
   try{ const ms=await api("GET",`/api/threads/${encodeURIComponent(tid)}/messages`);
     if(tid===S.msgTid && JSON.stringify(ms)!==JSON.stringify(S.msgs)){ S.msgs=ms; render(true); } }catch(e){}
 }
-function wantMsgs(tid){
-  if(S.msgTid===tid) return;
-  S.msgTid=tid; S.msgs=[]; setTimeout(loadMsgs,0);
-}
+function wantMsgs(tid){ if(S.msgTid===tid) return; S.msgTid=tid; S.msgs=[]; setTimeout(loadMsgs,0); }
 function every(ms, fn){ setInterval(()=>{ if(!document.hidden) fn(); }, ms); }
-every(20000, loadListings);
+every(30000, loadListings);
 every(8000, loadThreads);
 every(4000, ()=>{ if(S.route==="item"||S.route==="inbox") loadMsgs(); });
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden){ loadListings(); loadThreads(); loadMsgs(); } });
@@ -376,69 +668,134 @@ async function sendMsg(l, t, body){
   if(!S.me) return goSignIn();
   try{
     if(t.id) await api("POST",`/api/threads/${encodeURIComponent(t.id)}/messages`, body);
-    else { const r=await api("POST",`/api/listings/${encodeURIComponent(l.id)}/messages`, body); S.activeThread=r.threadId; await loadThreads(); wantMsgs(r.threadId); }
-    await loadMsgs(); await loadThreads(); render(true);
+    else { const r=await api("POST",`/api/listings/${encodeURIComponent(l.id)}/messages`, body); S.activeThread=r.threadId; wantMsgs(r.threadId); }
+    await loadThreads(); await loadMsgs(); render(true);
   }catch(e){ fail(e); }
 }
+function downscale(file, maxPx, q){
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file); const img = new Image();
+    img.onload = () => { const r=Math.min(1, maxPx/Math.max(img.width,img.height));
+      const c=document.createElement("canvas"); c.width=Math.round(img.width*r); c.height=Math.round(img.height*r);
+      const ctx=c.getContext("2d"); ctx.fillStyle="#fff"; ctx.fillRect(0,0,c.width,c.height); ctx.drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url);
+      res(c.toDataURL("image/jpeg",q)); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error(`“${file.name}” isn't an image this browser can read. Try a JPEG or PNG.`)); };
+    img.src = url;
+  });
+}
 async function addPhotos(files){
-  const d=S.draft; const list=[...files].slice(0, 6-d.photos.length);
-  S.busy=true; render();
-  for(const f of list){
-    try{ const data=await downscale(f,1400,.82); const r=await api("POST","/api/photos",{data}); d.photos.push(r.id); }
-    catch(e){ S.draftErr=e.message; }
-  }
-  S.busy=false; render();
+  const d=S.draft; if(!d) return;
+  const imgs=[...files].filter(f=>/^image\//.test(f.type)||/\.(heic|heif|jpe?g|png|webp)$/i.test(f.name));
+  const room = 8 - d.photos.length - S.uploading;
+  if(!imgs.length){ toast("Choose image files to upload."); return; }
+  if(room<=0){ toast("You can add up to 8 photos."); return; }
+  const list=imgs.slice(0,room);
+  if(imgs.length>room) toast(`Added ${room} of ${imgs.length}. Listings hold up to 8 photos.`);
+  S.uploading+=list.length; S.draftErr=""; render();
+  // upload in parallel, but add them in the order the seller picked them so the first one stays the cover
+  const ids = await Promise.all(list.map(async f=>{
+    try{ const data=await downscale(f,1600,.82); return (await api("POST","/api/photos",{data})).id; }
+    catch(e){ S.draftErr=e.message; if(e.status===401) goSignIn(); return null; }
+  }));
+  S.uploading -= list.length;
+  if(S.draft===d) ids.forEach(id=>{ if(id) d.photos.push(id); });
+  saveDraftLocal(); render(true);
 }
 async function saveListing(){
-  const d=S.draft;
-  const body={title:d.title,cat:d.cat,storage:d.storage,grade:d.grade,battery:d.battery===""?null:Number(d.battery),lockOff:!!d.lockOff,price:Number(d.price),area:d.area,desc:d.desc,photos:d.photos};
-  if(!body.title.trim()){ S.draftErr="Add the model, for example “iPhone 13, Midnight”."; return render(); }
-  if(!(body.price>0)){ S.draftErr="Set a price above $0."; return render(); }
+  const d=S.draft; const isNew=d._for==="new";
+  const body={title:d.title,cat:d.cat,storage:d.storage,grade:d.grade,battery:d.battery===""?null:Number(d.battery),lockOff:!!d.lockOff,price:Number(d.price),state:d.state,city:d.city,desc:d.desc,photos:d.photos};
+  const miss = draftChecks(d).filter(c=>!c[1]).map(c=>c[0].toLowerCase());
+  if(miss.length && !(miss.length===1 && miss[0].startsWith("add at least") && !isNew)){ S.draftErr = "To post, "+miss.join(", ")+"."; render(); $(".err")&&$(".err").scrollIntoView({block:"center",behavior:"smooth"}); return; }
   S.busy=true; S.draftErr=""; render();
   try{
     let id=d._for;
-    if(id==="new"){ id=(await api("POST","/api/listings",body)).id; } else await api("PUT",`/api/listings/${encodeURIComponent(id)}`,body);
-    S.busy=false; S.draft=null; await loadListings(); toast(d._for==="new"?"Listing posted":"Listing updated"); location.hash="item-"+id;
+    if(isNew) id=(await api("POST","/api/listings",body)).id; else await api("PUT",`/api/listings/${encodeURIComponent(id)}`,body);
+    S.busy=false; S.draft=null; if(isNew) lsSet("as_draft",null);
+    if(S.me && !S.me.state){ S.me.state=body.state; S.me.city=body.city; }
+    await loadListings(); loadMine(); toast(isNew?"Your listing is live":"Listing updated"); location.hash="item-"+id;
   }catch(e){ S.busy=false; S.draftErr=e.message; if(e.status===401) goSignIn(); render(); }
+}
+async function setStatus(id, s){
+  try{ await api("PATCH",`/api/listings/${encodeURIComponent(id)}/status`,{status:s}); await loadListings(); loadMine(); render(true);
+    toast(s==="sold"?"Marked sold":s==="reserved"?"Marked reserved":"Relisted"); }catch(err){ fail(err); }
+}
+async function copyLink(){
+  const url=location.href;
+  try{ await navigator.clipboard.writeText(url); toast("Link copied"); }
+  catch(e){ openDialog(`<div class="dlg"><h2 id="dlgTitle">Share this listing</h2><input class="input" id="shareUrl" value="${esc(url)}" readonly><div class="dact"><button class="btn primary" data-act="closeDlg">Done</button></div></div>`); const i=$("#shareUrl"); i.select(); }
 }
 
 /* ---------- events ---------- */
 document.addEventListener("click", async e => {
+  if(S.menuOpen && !e.target.closest(".who")){ S.menuOpen=false; paintChrome(); }
   const t=e.target.closest("[data-act],[data-go]"); if(!t) return;
   if(t.dataset.go && !e.target.closest("[data-act]")){ location.hash=t.dataset.go; return; }
   const a=t.dataset.act, f=S.f;
-  if(a==="chip"){ const set=f[t.dataset.set]; set.has(t.dataset.k)?set.delete(t.dataset.k):set.add(t.dataset.k); render(); }
-  else if(a==="reset"){ Object.assign(f,{q:"",cats:new Set(),grade:new Set(),max:"",area:"",lockOnly:false,hideSold:true,savedOnly:false}); $("#q").value=""; render(); }
-  else if(a==="rail"){ S.railOpen=!S.railOpen; render(); }
-  else if(a==="photo"){ S.photoIx=Number(t.dataset.i); render(); }
-  else if(a==="pick"){ S.activeThread=t.dataset.tid; render(); }
-  else if(a==="authMode"){ S.authMode=S.authMode==="up"?"in":"up"; S.authErr=""; render(); }
-  else if(a==="logout"){ try{ await api("POST","/api/auth/logout"); }catch(err){} S.me=null; S.threads=[]; S.saved=new Set(); S.msgTid=null; toast("Signed out"); render(); }
-  else if(a==="save"){ e.stopPropagation(); const id=t.dataset.id; const on=!S.saved.has(id); on?S.saved.add(id):S.saved.delete(id); render(true);
-    try{ await api(on?"PUT":"DELETE",`/api/saved/${encodeURIComponent(id)}`); }catch(err){ fail(err); } }
-  else if(a==="rmPhoto"){ S.draft.photos.splice(Number(t.dataset.i),1); S.draftErr=""; render(); }
-  else if(a==="askDel"){ S.confirm="delete"; render(); }
-  else if(a==="cancelConfirm"){ S.confirm=null; render(); }
-  else if(a==="del"){ try{ await api("DELETE",`/api/listings/${encodeURIComponent(S.param)}`); toast("Listing deleted"); await loadListings(); location.hash="browse"; }catch(err){ fail(err); } }
-  else if(a==="status"){ try{ await api("PATCH",`/api/listings/${encodeURIComponent(S.param)}/status`,{status:t.dataset.s}); await loadListings();
-      toast(t.dataset.s==="sold"?"Marked sold":t.dataset.s==="reserved"?"Marked reserved":"Relisted"); }catch(err){ fail(err); } }
-  else if(a==="quick"){ const l=findListing(S.param); if(l) sendMsg(l,buyerThread(l),{kind:"text",text:t.dataset.text}); }
-  else if(a==="accept"){
-    if(!S.activeThread) return;
-    try{ await api("POST",`/api/threads/${encodeURIComponent(S.activeThread)}/accept`,{amount:Number(t.dataset.amt)}); await loadListings(); await loadMsgs(); toast("Reserved for this buyer"); }catch(err){ fail(err); }
+  const shopChanged = () => { render(); syncShopHash(); };
+  switch(a){
+    case "menu": S.menuOpen=!S.menuOpen; paintChrome(); break;
+    case "openLoc": locDialog(); break;
+    case "closeDlg": closeDialog(); break;
+    case "useMyLoc": setLoc(S.me.state,S.me.city); closeDialog(); afterLocChange(); break;
+    case "allStates": S.allStates=!S.allStates; render(true); break;
+    case "scrollTo": e.preventDefault(); if(S.route!=="home") location.hash="home"; setTimeout(()=>{ const el=document.getElementById(t.dataset.target); el&&el.scrollIntoView({behavior:"smooth"}); },60); break;
+    case "cat": f.cat=t.dataset.k; shopChanged(); break;
+    case "grade": f.grades.has(t.dataset.k)?f.grades.delete(t.dataset.k):f.grades.add(t.dataset.k); shopChanged(); break;
+    case "setCity": e.preventDefault(); setLoc(S.loc.state, t.dataset.city); if(S.route!=="shop") location.hash=shopHash(); else shopChanged(); break;
+    case "clearLoc": e.preventDefault(); setLoc("",""); if(S.route!=="shop") location.hash="shop"; else shopChanged(); break;
+    case "unf": { const k=t.dataset.k; if(k==="q"){ f.q=""; } else if(k.startsWith("grade:")) f.grades.delete(k.slice(6)); else if(k==="lock") f.lockOnly=false; else f[k]=""; shopChanged(); break; }
+    case "reset": Object.assign(f,{q:"",cat:"",grades:new Set(),min:"",max:"",batt:"",lockOnly:false,hideSold:true,sort:"new"}); shopChanged(); break;
+    case "rail": S.railOpen=!S.railOpen; render(true); break;
+    case "photo": S.photoIx=Number(t.dataset.i); render(true); break;
+    case "pick": S.activeThread=t.dataset.tid; render(); break;
+    case "authMode": S.authMode=S.authMode==="up"?"in":"up"; S.authErr=""; render(); break;
+    case "logout": try{ await api("POST","/api/auth/logout"); }catch(err){} S.me=null; S.threads=[]; S.saved=new Set(); S.mine=null; S.msgTid=null; S.menuOpen=false; toast("Signed out"); location.hash="home"; render(); break;
+    case "save": { e.stopPropagation(); if(!S.me) return goSignIn(); const id=t.dataset.id; const on=!S.saved.has(id); on?S.saved.add(id):S.saved.delete(id); render(true); toast(on?"Saved":"Removed from saved");
+      try{ await api(on?"PUT":"DELETE",`/api/saved/${encodeURIComponent(id)}`); }catch(err){ fail(err); } break; }
+    case "share": copyLink(); break;
+    case "report": reportDialog(t.dataset.id); break;
+    case "askDel": confirmDialog("Delete this listing?", "del", t.dataset.id); break;
+    case "del": { const id=t.dataset.id; closeDialog(); try{ await api("DELETE",`/api/listings/${encodeURIComponent(id)}`); toast("Listing deleted"); await loadListings(); loadMine(); if(S.route==="item") location.hash="mine"; else render(true); }catch(err){ fail(err); } break; }
+    case "status": setStatus(t.dataset.id, t.dataset.s); break;
+    case "mineTab": S.mineTab=t.dataset.k; render(true); break;
+    case "quick": { const l=findListing(S.param); if(l) sendMsg(l,buyerThread(l),{kind:"text",text:t.dataset.text}); break; }
+    case "accept": if(!S.activeThread) return;
+      try{ await api("POST",`/api/threads/${encodeURIComponent(S.activeThread)}/accept`,{amount:Number(t.dataset.amt)}); await loadListings(); await loadMsgs(); toast("Reserved for this buyer"); }catch(err){ fail(err); } break;
+    case "pickPhotos": $("#photoIn")&&$("#photoIn").click(); break;
+    case "rmPhoto": S.draft.photos.splice(Number(t.dataset.i),1); S.draftErr=""; saveDraftLocal(); render(true); break;
+    case "movePhoto": { const i=Number(t.dataset.i), j=i+Number(t.dataset.d), p=S.draft.photos; [p[i],p[j]]=[p[j],p[i]]; saveDraftLocal(); render(true); break; }
+    case "clearDraft": lsSet("as_draft",null); S.draft=null; render(); break;
   }
 });
-document.addEventListener("keydown", e => { if(e.key==="Enter" && e.target.matches(".card[data-go]")) location.hash=e.target.dataset.go; });
+document.addEventListener("keydown", e => {
+  if(e.key==="Enter" && e.target.matches(".card[data-go]")) location.hash=e.target.dataset.go;
+  if((e.key==="Enter"||e.key===" ") && e.target.id==="drop"){ e.preventDefault(); $("#photoIn").click(); }
+  if(e.key==="Escape" && S.menuOpen){ S.menuOpen=false; paintChrome(); }
+  if(S.route==="item" && !e.target.closest("input,textarea,select") && (e.key==="ArrowLeft"||e.key==="ArrowRight")){
+    const l=findListing(S.param); const n=(l&&l.photos||[]).length; if(n>1){ S.photoIx=(S.photoIx+(e.key==="ArrowRight"?1:-1)+n)%n; render(true); }
+  }
+});
+function afterLocChange(){ if(S.route==="shop"){ render(); syncShopHash(); } else if(S.route==="home") render(); else location.hash=shopHash(); }
 document.addEventListener("submit", async e => {
-  const form=e.target.closest("[data-form]"); if(!form) return; e.preventDefault();
+  const form=e.target.closest("[data-form]") || (e.target.id==="searchForm"?e.target:null); if(!form) return; e.preventDefault();
+  if(form.id==="searchForm"){ S.f.q=$("#q").value.trim(); location.hash=shopHash(); if(S.route==="shop") render(); return; }
   const kind=form.dataset.form;
+  if(kind==="heroSearch"){ S.f.q=$("#heroQ").value.trim(); S.f.cat=""; setLoc($("#heroState").value,""); location.hash=shopHash(); return; }
+  if(kind==="loc"){ const st=$("#locState").value; setLoc(st, st?$("#locCity").value.trim():""); closeDialog(); afterLocChange(); return; }
   if(kind==="sell") return saveListing();
+  if(kind==="report"){ const reason=(form.querySelector("input[name=reason]:checked")||{}).value; try{ await api("POST",`/api/listings/${encodeURIComponent(form.dataset.id)}/report`,{reason,note:$("#repNote").value}); closeDialog(); toast("Thanks. We'll review this listing."); }catch(err){ closeDialog(); fail(err); } return; }
+  if(kind==="account"){
+    S.busy=true; S.acctMsg=""; render();
+    try{ S.me=await api("PUT","/api/me",{name:$("#accName").value,state:$("#accState").value,city:$("#accCity").value}); S.busy=false; S.acctMsg="Saved."; if(S.me.state) setLoc(S.me.state,S.me.city); toast("Profile saved"); }
+    catch(err){ S.busy=false; S.acctMsg=err.message; } render(); return;
+  }
   if(kind==="auth"){
     const up=S.authMode==="up";
-    const body={email:$("#aemail").value, password:$("#apass").value}; if(up) body.name=$("#aname").value;
+    const body={email:$("#aemail").value, password:$("#apass").value}; if(up){ body.name=$("#aname").value; body.state=$("#astate").value; body.city=$("#acity").value; }
     S.busy=true; S.authErr=""; render();
-    try{ S.me=await api("POST", up?"/api/auth/register":"/api/auth/login", body); S.busy=false; toast(up?"Account created":"Signed in");
-      loadThreads(); loadSaved(); location.hash = S.next && S.next!=="signin" ? S.next : "browse"; render(); }
+    try{ S.me=await api("POST", up?"/api/auth/register":"/api/auth/login", body); S.busy=false; toast(up?"Welcome to Applesmart":"Signed in");
+      if(S.me.state && !S.loc.state) setLoc(S.me.state,S.me.city);
+      loadThreads(); loadSaved(); loadMine(); location.hash = S.next && S.next!=="signin" ? S.next : "home"; render(); }
     catch(err){ S.busy=false; S.authErr=err.message; render(); }
     return;
   }
@@ -451,31 +808,74 @@ document.addEventListener("submit", async e => {
 let qT;
 document.addEventListener("input", e => {
   const el=e.target, f=S.f;
-  if(el.id==="q"){ clearTimeout(qT); qT=setTimeout(()=>{ f.q=el.value; if(S.route!=="browse") location.hash="browse"; else render(); },150); return; }
-  if(el.id==="fmax"){ f.max=el.value; render(); }
-  if(el.id==="farea"){ f.area=el.value; render(); }
-  if(S.draft && el.closest('[data-form="sell"]') && el.name && el.type!=="radio" && el.type!=="checkbox" && el.tagName!=="SELECT"){ S.draft[el.name]=el.value; refreshPreview(); }
+  if(S.route==="shop"){
+    if(el.id==="fmin"||el.id==="fmax"){ clearTimeout(qT); qT=setTimeout(()=>{ f[el.id.slice(1)]=el.value; render(); syncShopHash(); },250); return; }
+    if(el.id==="fCity"){ clearTimeout(qT); qT=setTimeout(()=>{ const v=el.value.trim(); const match=[...$("#fCities").options].some(o=>o.value.toLowerCase()===v.toLowerCase()); if(!v||match){ setLoc(S.loc.state,v); render(); syncShopHash(); } },300); return; }
+  }
+  if(el.id==="locState"){ const st=el.value; $("#locCityWrap").hidden=!st; $("#locCity").value=""; $("#locCities").outerHTML=st?cityList("locCities",st):`<datalist id="locCities"></datalist>`; return; }
+  if(el.id==="accState"){ const dl=$("#accCities"); const html=el.value?cityList("accCities",el.value):""; if(dl) dl.outerHTML=html||"<span></span>"; else if(html) $("#accCity").insertAdjacentHTML("afterend",html); return; }
+  if(S.draft && el.closest('[data-form="sell"]')){
+    const d=S.draft;
+    if(el.id==="battRange"){ d.battery=el.value; $("#battOut").textContent=el.value+"%"; }
+    else if(el.name && !["radio","checkbox"].includes(el.type) && el.tagName!=="SELECT") d[el.name]=el.value;
+    if(el.id==="desc") $("#descCount").textContent=el.value.length+" / 1200";
+    saveDraftLocal(); refreshSellSide();
+  }
 });
 document.addEventListener("change", e => {
   const el=e.target, f=S.f;
-  if(el.id==="fsort"){ f.sort=el.value; render(); }
-  if(el.id==="flock"){ f.lockOnly=el.checked; render(); }
-  if(el.id==="fsold"){ f.hideSold=el.checked; render(); }
-  if(el.id==="fsaved"){ f.savedOnly=el.checked; render(); }
-  if(el.id==="photoIn" && el.files.length){ S.draftErr=""; addPhotos(el.files); return; }
-  if(S.draft && el.closest('[data-form="sell"]') && (el.type==="radio"||el.tagName==="SELECT"||el.type==="checkbox")){
-    if(el.name==="lockOff") S.draft.lockOff=el.checked; else if(el.name) S.draft[el.name]=el.value; render(); }
+  if(S.route==="shop"){
+    if(el.id==="fsort"){ f.sort=el.value; render(); syncShopHash(); }
+    if(el.id==="flock"){ f.lockOnly=el.checked; render(); syncShopHash(); }
+    if(el.id==="fsold"){ f.hideSold=el.checked; render(); }
+    if(el.id==="fbatt"){ f.batt=el.value; render(); syncShopHash(); }
+    if(el.id==="fState"){ setLoc(el.value,""); render(); syncShopHash(); }
+    if(el.id==="fCity"){ setLoc(S.loc.state, el.value.trim()); render(); syncShopHash(); }
+  }
+  if(el.id==="photoIn" && el.files.length){ addPhotos(el.files); el.value=""; return; }
+  if(S.draft && el.closest('[data-form="sell"]')){
+    const d=S.draft;
+    if(el.id==="battNA"){ d.battery = el.checked ? "" : "100"; }
+    else if(el.name==="lockOff") d.lockOff=el.checked;
+    else if(el.name==="state"){ d.state=el.value; if(!(CITIES[d.state]||[]).includes(d.city)) d.city=""; }
+    else if(el.type==="radio"||el.tagName==="SELECT") d[el.name]=el.value;
+    else return;
+    saveDraftLocal(); render(true);
+  }
 });
-function refreshPreview(){
-  const col=$("#previewCard"); if(!col) return; const d=S.draft;
-  col.innerHTML=cardHTML({...d,id:"preview",price:Number(d.price)||0,battery:d.battery===""?null:Number(d.battery),createdAt:Date.now(),status:"active",title:d.title||"Your device title"},true);
+function refreshSellSide(){
+  const d=S.draft, col=$("#previewCard"); if(!col) return;
+  col.innerHTML=cardHTML({...d,id:"preview",price:Number(d.price)||0,battery:d.battery===""?null:Number(d.battery),createdAt:Date.now(),status:"active",title:d.title||"Your device title"},{preview:true});
+  const checks=draftChecks(d), done=checks.filter(c=>c[1]).length, box=$(".progress");
+  if(box) box.innerHTML=`<div style="display:flex;justify-content:space-between"><b>${done===checks.length?"Ready to post":"Almost there"}</b><span class="muted mono">${done}/${checks.length}</span></div><div class="bar-p"><i style="width:${done/checks.length*100}%"></i></div><ul>${checks.map(([t,ok])=>`<li class="${ok?"done":""}"><i></i>${t}</li>`).join("")}</ul>`;
 }
+// photo drag and drop: files onto the drop zone, and reordering within the grid
+let dragFrom=null;
+document.addEventListener("dragstart", e => { const fig=e.target.closest && e.target.closest("#photoGrid figure"); if(fig){ dragFrom=Number(fig.dataset.i); fig.classList.add("dragging"); e.dataTransfer.effectAllowed="move"; } });
+document.addEventListener("dragend", () => { dragFrom=null; $$("#photoGrid figure").forEach(f=>f.classList.remove("dragging","target")); });
+document.addEventListener("dragover", e => {
+  if(S.route!=="sell"&&S.route!=="edit") return;
+  const fig=e.target.closest && e.target.closest("#photoGrid figure");
+  if(dragFrom!=null && fig){ e.preventDefault(); $$("#photoGrid figure").forEach(f=>f.classList.toggle("target", f===fig)); return; }
+  if(e.dataTransfer && [...e.dataTransfer.types].includes("Files")){ e.preventDefault(); const dz=$("#drop"); dz&&dz.classList.add("over"); }
+});
+document.addEventListener("dragleave", e => { if(e.target.id==="drop") e.target.classList.remove("over"); });
+document.addEventListener("drop", e => {
+  if(S.route!=="sell"&&S.route!=="edit") return;
+  const fig=e.target.closest && e.target.closest("#photoGrid figure");
+  if(dragFrom!=null && fig){ e.preventDefault(); const to=Number(fig.dataset.i), p=S.draft.photos; const [m]=p.splice(dragFrom,1); p.splice(to,0,m); dragFrom=null; saveDraftLocal(); render(true); return; }
+  if(e.dataTransfer && e.dataTransfer.files.length){ e.preventDefault(); const dz=$("#drop"); dz&&dz.classList.remove("over"); addPhotos(e.dataTransfer.files); }
+});
+document.addEventListener("paste", e => { if((S.route==="sell"||S.route==="edit") && e.clipboardData && e.clipboardData.files.length) addPhotos(e.clipboardData.files); });
+$("#dlg").addEventListener("click", e => { if(e.target.id==="dlg") closeDialog(); });
 
 /* ---------- boot ---------- */
 (async () => {
+  paintChrome();
   try{ S.me = await api("GET","/api/me"); }catch(e){}
+  if(S.me && S.me.state && !lsGet("as_loc",null)) setLoc(S.me.state, S.me.city);
   route();
   await loadListings();
-  if(S.me){ loadThreads(); loadSaved(); }
+  if(S.me){ loadThreads(); loadSaved(); loadMine(); }
 })();
 })();

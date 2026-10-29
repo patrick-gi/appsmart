@@ -1,6 +1,6 @@
 {
   "name": "applesmart",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Marketplace for buying and selling used Apple devices with local pickup",
   "main": "server.js",
   "scripts": {
@@ -13,7 +13,7 @@
     "pg": "^8.13.1"
   },
   "engines": {
-    "node": ">=20"
+    "node": "22.x"
   },
   "private": true
 }

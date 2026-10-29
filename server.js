@@ -3,6 +3,7 @@ const express = require("express");
 const crypto = require("crypto");
 const path = require("path");
 const { Pool } = require("pg");
+const US = require("./public/us.js");
 
 const PORT = process.env.PORT || 3000;
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -93,6 +94,24 @@ async function migrate() {
       read_at       TIMESTAMPTZ NOT NULL,
       PRIMARY KEY (user_id, thread_id)
     );
+    CREATE TABLE IF NOT EXISTS reports (
+      id            BIGSERIAL PRIMARY KEY,
+      listing_id    TEXT NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+      reporter_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reason        TEXT NOT NULL,
+      note          TEXT NOT NULL DEFAULT '',
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (listing_id, reporter_id)
+    );
+    -- v2: US locations, views, price drops
+    ALTER TABLE users    ADD COLUMN IF NOT EXISTS city  TEXT NOT NULL DEFAULT '';
+    ALTER TABLE users    ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT '';
+    ALTER TABLE listings ADD COLUMN IF NOT EXISTS city  TEXT NOT NULL DEFAULT '';
+    ALTER TABLE listings ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT '';
+    ALTER TABLE listings ADD COLUMN IF NOT EXISTS views INT NOT NULL DEFAULT 0;
+    ALTER TABLE listings ADD COLUMN IF NOT EXISTS orig_price INT;
+    ALTER TABLE listings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+    CREATE INDEX IF NOT EXISTS listings_state_city ON listings(state, city);
   `);
   await q(`DELETE FROM sessions WHERE expires_at < now()`);
 }
@@ -123,20 +142,36 @@ function parseCookies(h) {
 const CATS = ["iphone", "ipad", "mac", "watch", "airpods", "other"];
 const GRADES = ["A", "B", "C"];
 const STATUSES = ["active", "reserved", "sold"];
-const str = (v, max) => String(v ?? "").trim().slice(0, max);
+const REPORT_REASONS = ["scam", "stolen", "wrong-info", "offensive", "sold-elsewhere", "other"];
+const MAX_PHOTOS = 8;
+const str = (v, max) => String(v ?? "").trim().replace(/\s+/g, " ").slice(0, max);
+
+// "  saN   diego " -> "San Diego"; keeps "St. Louis", "Winston-Salem", "O'Fallon"
+function cleanCity(v) {
+  const s = str(v, 40);
+  if (!s) return "";
+  if (!/^[A-Za-z][A-Za-z .'\-]*$/.test(s)) return null;
+  return s.toLowerCase().replace(/(^|[\s\-'.])([a-z])/g, (m, p, c) => p + c.toUpperCase());
+}
+function cleanState(v) {
+  const s = String(v ?? "").trim().toUpperCase();
+  return US.STATES[s] ? s : null;
+}
 
 class HttpError extends Error {
   constructor(status, msg) { super(msg); this.status = status; }
 }
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const ms = (d) => (d ? new Date(d).getTime() : null);
 
 function listingOut(r) {
   return {
     id: r.id, sellerId: r.seller_id, sellerName: r.seller_name, title: r.title, cat: r.cat,
     storage: r.storage, grade: r.grade, battery: r.battery, lockOff: r.lock_off, price: r.price,
-    area: r.area, desc: r.descr, photos: r.photos, status: r.status,
-    reservedFor: r.reserved_for, agreedPrice: r.agreed_price,
-    createdAt: new Date(r.created_at).getTime(),
+    origPrice: r.orig_price, city: r.city || r.area || "", state: r.state, desc: r.descr, photos: r.photos,
+    status: r.status, reservedFor: r.reserved_for, agreedPrice: r.agreed_price, views: r.views,
+    createdAt: ms(r.created_at), updatedAt: ms(r.updated_at),
+    ...(r.thread_count !== undefined ? { threadCount: Number(r.thread_count), saveCount: Number(r.save_count) } : {}),
   };
 }
 function validateListing(b) {
@@ -145,15 +180,19 @@ function validateListing(b) {
   const grade = GRADES.includes(b.grade) ? b.grade : null;
   const price = Math.round(Number(b.price));
   const battery = b.battery === null || b.battery === "" || b.battery === undefined ? null : Math.round(Number(b.battery));
-  if (!title) throw new HttpError(400, "Add the model, for example “iPhone 13, Midnight”.");
+  const state = cleanState(b.state);
+  const city = cleanCity(b.city);
+  if (!title) throw new HttpError(400, "Add the model, for example “iPhone 15 Pro, Natural Titanium”.");
   if (!cat) throw new HttpError(400, "Choose a device type.");
   if (!grade) throw new HttpError(400, "Choose a condition grade.");
   if (!(price > 0 && price < 100000)) throw new HttpError(400, "Set a price between $1 and $99,999.");
   if (battery !== null && !(battery >= 0 && battery <= 100)) throw new HttpError(400, "Battery health is a percentage from 0 to 100.");
-  const photos = Array.isArray(b.photos) ? b.photos.filter((p) => /^P[\w-]{6,40}$/.test(p)).slice(0, 6) : [];
+  if (!state) throw new HttpError(400, "Choose the state where buyers will pick it up.");
+  if (!city) throw new HttpError(400, city === null ? "Use letters only for the city, for example “San Diego”." : "Enter the city where buyers will pick it up.");
+  const photos = Array.isArray(b.photos) ? b.photos.filter((p) => /^P[\w-]{6,40}$/.test(p)).slice(0, MAX_PHOTOS) : [];
   return {
-    title, cat, grade, price, battery,
-    storage: str(b.storage, 12), lockOff: !!b.lockOff, area: str(b.area, 40), desc: str(b.desc, 800), photos,
+    title, cat, grade, price, battery, state, city,
+    storage: str(b.storage, 12), lockOff: !!b.lockOff, desc: String(b.desc ?? "").trim().slice(0, 1200), photos,
   };
 }
 
@@ -165,6 +204,7 @@ app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "same-origin");
   res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   next();
 });
 app.use(express.json({ limit: "4mb" }));
@@ -175,7 +215,7 @@ app.use(wrap(async (req, res, next) => {
   req.user = null;
   if (tok) {
     const r = await q(
-      `SELECT u.id, u.name, u.email FROM sessions s JOIN users u ON u.id = s.user_id
+      `SELECT u.id, u.name, u.email, u.city, u.state, u.created_at FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.token_hash = $1 AND s.expires_at > now()`, [sha(tok)]);
     if (r.rows[0]) req.user = r.rows[0];
   }
@@ -193,6 +233,7 @@ app.use("/api", (req, res, next) => {
   next();
 });
 const needUser = (req) => { if (!req.user) throw new HttpError(401, "Sign in to do that."); return req.user; };
+const meOut = (u) => ({ id: u.id, name: u.name, email: u.email, city: u.city, state: u.state, createdAt: ms(u.created_at) });
 
 async function startSession(res, userId) {
   const tok = crypto.randomBytes(32).toString("base64url");
@@ -201,42 +242,48 @@ async function startSession(res, userId) {
   res.setHeader("Set-Cookie", `as_session=${tok}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 86400}${secure}`);
 }
 
-// naive per-IP limiter for auth endpoints
+// naive per-IP limiter
 const hits = new Map();
-function limit(req, max = 10, windowMs = 10 * 60e3) {
-  const k = req.ip, now = Date.now();
+function limit(req, key, max = 10, windowMs = 10 * 60e3) {
+  const k = key + ":" + req.ip, now = Date.now();
   const arr = (hits.get(k) || []).filter((t) => now - t < windowMs);
   arr.push(now); hits.set(k, arr);
   if (arr.length > max) throw new HttpError(429, "Too many attempts. Wait a few minutes and try again.");
 }
+setInterval(() => { const now = Date.now(); for (const [k, v] of hits) if (!v.some((t) => now - t < 60 * 60e3)) hits.delete(k); }, 10 * 60e3).unref();
 
 /* auth */
 app.post("/api/auth/register", wrap(async (req, res) => {
-  limit(req);
+  limit(req, "auth");
   const email = str(req.body.email, 200).toLowerCase();
   const name = str(req.body.name, 40);
   const pw = String(req.body.password || "");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(400, "Enter a valid email address.");
   if (!name) throw new HttpError(400, "Enter your name as buyers will see it.");
   if (pw.length < 8) throw new HttpError(400, "Use a password of at least 8 characters.");
+  const state = req.body.state ? cleanState(req.body.state) : "";
+  const city = req.body.city ? cleanCity(req.body.city) : "";
+  if (state === null) throw new HttpError(400, "Choose a US state from the list.");
+  if (city === null) throw new HttpError(400, "Use letters only for the city.");
   const id = newId("u");
   try {
-    await q(`INSERT INTO users (id, email, name, pass_hash) VALUES ($1,$2,$3,$4)`, [id, email, name, hashPassword(pw)]);
+    await q(`INSERT INTO users (id, email, name, pass_hash, city, state) VALUES ($1,$2,$3,$4,$5,$6)`, [id, email, name, hashPassword(pw), city, state]);
   } catch (e) {
     if (e.code === "23505") throw new HttpError(409, "An account with that email already exists. Sign in instead.");
     throw e;
   }
   await startSession(res, id);
-  res.json({ id, name });
+  const r = await q(`SELECT * FROM users WHERE id=$1`, [id]);
+  res.json(meOut(r.rows[0]));
 }));
 app.post("/api/auth/login", wrap(async (req, res) => {
-  limit(req);
+  limit(req, "auth");
   const email = str(req.body.email, 200).toLowerCase();
-  const r = await q(`SELECT id, name, pass_hash FROM users WHERE email = $1`, [email]);
+  const r = await q(`SELECT * FROM users WHERE email = $1`, [email]);
   const u = r.rows[0];
   if (!u || !checkPassword(String(req.body.password || ""), u.pass_hash)) throw new HttpError(401, "That email and password don't match.");
   await startSession(res, u.id);
-  res.json({ id: u.id, name: u.name });
+  res.json(meOut(u));
 }));
 app.post("/api/auth/logout", wrap(async (req, res) => {
   const tok = parseCookies(req.headers.cookie).as_session;
@@ -244,18 +291,60 @@ app.post("/api/auth/logout", wrap(async (req, res) => {
   res.setHeader("Set-Cookie", "as_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
   res.json({ ok: true });
 }));
-app.get("/api/me", (req, res) => res.json(req.user ? { id: req.user.id, name: req.user.name } : null));
+app.get("/api/me", (req, res) => res.json(req.user ? meOut(req.user) : null));
+app.put("/api/me", wrap(async (req, res) => {
+  const u = needUser(req);
+  const name = str(req.body.name, 40);
+  const state = req.body.state ? cleanState(req.body.state) : "";
+  const city = req.body.city ? cleanCity(req.body.city) : "";
+  if (!name) throw new HttpError(400, "Enter your name as buyers will see it.");
+  if (state === null) throw new HttpError(400, "Choose a US state from the list.");
+  if (city === null) throw new HttpError(400, "Use letters only for the city.");
+  const r = await q(`UPDATE users SET name=$2, city=$3, state=$4 WHERE id=$1 RETURNING *`, [u.id, name, city, state]);
+  res.json(meOut(r.rows[0]));
+}));
+
+/* public profiles */
+app.get("/api/users/:id", wrap(async (req, res) => {
+  const r = await q(`SELECT id, name, city, state, created_at FROM users WHERE id=$1`, [req.params.id]);
+  const u = r.rows[0];
+  if (!u) throw new HttpError(404, "That seller's account no longer exists.");
+  const c = await q(`SELECT count(*) FILTER (WHERE status='active') active, count(*) FILTER (WHERE status='sold') sold FROM listings WHERE seller_id=$1`, [u.id]);
+  res.json({ id: u.id, name: u.name, city: u.city, state: u.state, createdAt: ms(u.created_at), active: Number(c.rows[0].active), sold: Number(c.rows[0].sold) });
+}));
 
 /* listings */
 const LISTING_SELECT = `SELECT l.*, u.name AS seller_name FROM listings l JOIN users u ON u.id = l.seller_id`;
 app.get("/api/listings", wrap(async (req, res) => {
-  const r = await q(`${LISTING_SELECT} ORDER BY l.created_at DESC LIMIT 1000`);
+  const where = [], params = [];
+  const st = req.query.state && cleanState(req.query.state);
+  if (st) { params.push(st); where.push(`l.state = $${params.length}`); }
+  if (req.query.seller) { params.push(String(req.query.seller)); where.push(`l.seller_id = $${params.length}`); }
+  const r = await q(`${LISTING_SELECT} ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY l.created_at DESC LIMIT 1000`, params);
   res.json(r.rows.map(listingOut));
 }));
 app.get("/api/listings/:id", wrap(async (req, res) => {
   const r = await q(`${LISTING_SELECT} WHERE l.id = $1`, [req.params.id]);
   if (!r.rows[0]) throw new HttpError(404, "This listing was removed.");
   res.json(listingOut(r.rows[0]));
+}));
+app.get("/api/mine", wrap(async (req, res) => {
+  const u = needUser(req);
+  const r = await q(`${LISTING_SELECT.replace("SELECT l.*", `SELECT l.*,
+      (SELECT count(*) FROM threads t WHERE t.listing_id = l.id) AS thread_count,
+      (SELECT count(*) FROM saved s WHERE s.listing_id = l.id) AS save_count`)}
+    WHERE l.seller_id = $1 ORDER BY l.created_at DESC`, [u.id]);
+  res.json(r.rows.map(listingOut));
+}));
+// counts of active listings per state and per city, for location browsing
+app.get("/api/locations", wrap(async (req, res) => {
+  const r = await q(`SELECT state, city, count(*)::int AS n FROM listings WHERE status <> 'sold' AND state <> '' GROUP BY state, city ORDER BY n DESC`);
+  const states = {};
+  for (const row of r.rows) {
+    const s = (states[row.state] ||= { state: row.state, n: 0, cities: [] });
+    s.n += row.n; s.cities.push({ city: row.city, n: row.n });
+  }
+  res.json(Object.values(states).sort((a, b) => b.n - a.n));
 }));
 async function ownPhotos(userId, ids) {
   if (!ids.length) return [];
@@ -265,12 +354,15 @@ async function ownPhotos(userId, ids) {
 }
 app.post("/api/listings", wrap(async (req, res) => {
   const u = needUser(req);
+  limit(req, "post", 30, 60 * 60e3);
   const v = validateListing(req.body);
   const photos = await ownPhotos(u.id, v.photos);
   const id = newId("L");
-  await q(`INSERT INTO listings (id, seller_id, title, cat, storage, grade, battery, lock_off, price, area, descr, photos)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-    [id, u.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.area, v.desc, photos]);
+  await q(`INSERT INTO listings (id, seller_id, title, cat, storage, grade, battery, lock_off, price, city, state, descr, photos)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    [id, u.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.city, v.state, v.desc, photos]);
+  // remember the seller's location for next time if they haven't set one
+  if (!u.state) await q(`UPDATE users SET city=$2, state=$3 WHERE id=$1`, [u.id, v.city, v.state]);
   res.status(201).json({ id });
 }));
 async function ownListing(u, id) {
@@ -282,11 +374,17 @@ async function ownListing(u, id) {
 }
 app.put("/api/listings/:id", wrap(async (req, res) => {
   const u = needUser(req);
-  await ownListing(u, req.params.id);
+  const old = await ownListing(u, req.params.id);
   const v = validateListing(req.body);
   const photos = await ownPhotos(u.id, v.photos);
-  await q(`UPDATE listings SET title=$2, cat=$3, storage=$4, grade=$5, battery=$6, lock_off=$7, price=$8, area=$9, descr=$10, photos=$11 WHERE id=$1`,
-    [req.params.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.area, v.desc, photos]);
+  // price drop tracking: remember the highest earlier price while the price stays below it
+  const ref = old.orig_price ?? old.price;
+  const origPrice = v.price < ref ? ref : null;
+  await q(`UPDATE listings SET title=$2, cat=$3, storage=$4, grade=$5, battery=$6, lock_off=$7, price=$8, city=$9, state=$10, descr=$11, photos=$12,
+             orig_price=$13, updated_at=now() WHERE id=$1`,
+    [req.params.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.city, v.state, v.desc, photos, origPrice]);
+  const dropped = old.photos.filter((p) => !photos.includes(p));
+  if (dropped.length) await q(`DELETE FROM photos WHERE owner_id=$1 AND id = ANY($2)`, [u.id, dropped]);
   res.json({ ok: true });
 }));
 app.patch("/api/listings/:id/status", wrap(async (req, res) => {
@@ -294,8 +392,8 @@ app.patch("/api/listings/:id/status", wrap(async (req, res) => {
   await ownListing(u, req.params.id);
   const s = req.body.status;
   if (!STATUSES.includes(s)) throw new HttpError(400, "Unknown status.");
-  if (s === "active") await q(`UPDATE listings SET status='active', reserved_for=NULL, agreed_price=NULL WHERE id=$1`, [req.params.id]);
-  else await q(`UPDATE listings SET status=$2 WHERE id=$1`, [req.params.id, s]);
+  if (s === "active") await q(`UPDATE listings SET status='active', reserved_for=NULL, agreed_price=NULL, updated_at=now() WHERE id=$1`, [req.params.id]);
+  else await q(`UPDATE listings SET status=$2, updated_at=now() WHERE id=$1`, [req.params.id, s]);
   res.json({ ok: true });
 }));
 app.delete("/api/listings/:id", wrap(async (req, res) => {
@@ -305,10 +403,37 @@ app.delete("/api/listings/:id", wrap(async (req, res) => {
   if (l.photos.length) await q(`DELETE FROM photos WHERE owner_id=$1 AND id = ANY($2)`, [u.id, l.photos]);
   res.json({ ok: true });
 }));
+// one view per visitor per listing per server lifetime-ish; sellers don't count
+const viewed = new Map();
+app.post("/api/listings/:id/view", wrap(async (req, res) => {
+  const who = req.user ? req.user.id : req.ip;
+  const key = who + "|" + req.params.id;
+  const now = Date.now();
+  if (now - (viewed.get(key) || 0) > 6 * 3600e3) {
+    viewed.set(key, now);
+    if (viewed.size > 50000) viewed.clear();
+    await q(`UPDATE listings SET views = views + 1 WHERE id=$1 AND seller_id <> $2`, [req.params.id, req.user ? req.user.id : ""]);
+  }
+  res.json({ ok: true });
+}));
+app.post("/api/listings/:id/report", wrap(async (req, res) => {
+  const u = needUser(req);
+  limit(req, "report", 20, 60 * 60e3);
+  const reason = REPORT_REASONS.includes(req.body.reason) ? req.body.reason : null;
+  if (!reason) throw new HttpError(400, "Choose a reason for the report.");
+  const l = await q(`SELECT seller_id FROM listings WHERE id=$1`, [req.params.id]);
+  if (!l.rows[0]) throw new HttpError(404, "This listing was removed.");
+  if (l.rows[0].seller_id === u.id) throw new HttpError(400, "You can't report your own listing.");
+  await q(`INSERT INTO reports (listing_id, reporter_id, reason, note) VALUES ($1,$2,$3,$4)
+           ON CONFLICT (listing_id, reporter_id) DO UPDATE SET reason=EXCLUDED.reason, note=EXCLUDED.note, created_at=now()`,
+    [req.params.id, u.id, reason, str(req.body.note, 500)]);
+  res.status(201).json({ ok: true });
+}));
 
 /* photos: client sends a downscaled JPEG/PNG/WebP as base64 */
 app.post("/api/photos", wrap(async (req, res) => {
   const u = needUser(req);
+  limit(req, "photo", 120, 60 * 60e3);
   const m = /^data:(image\/(jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body.data || ""));
   if (!m) throw new HttpError(400, "Upload a JPEG, PNG or WebP image.");
   const bytes = Buffer.from(m[3], "base64");
@@ -338,7 +463,8 @@ async function threadFor(u, id) {
 app.get("/api/threads", wrap(async (req, res) => {
   const u = needUser(req);
   const r = await q(`
-    SELECT t.*, l.title AS listing_title, b.name AS buyer_name, s.name AS seller_name, tr.read_at
+    SELECT t.*, l.title AS listing_title, l.photos[1] AS listing_photo, l.price AS listing_price, l.status AS listing_status,
+           b.name AS buyer_name, s.name AS seller_name, tr.read_at
     FROM threads t
     JOIN listings l ON l.id = t.listing_id
     JOIN users b ON b.id = t.buyer_id
@@ -347,9 +473,10 @@ app.get("/api/threads", wrap(async (req, res) => {
     WHERE t.buyer_id = $1 OR t.seller_id = $1
     ORDER BY t.updated_at DESC`, [u.id]);
   res.json(r.rows.map((t) => ({
-    id: t.id, listingId: t.listing_id, listingTitle: t.listing_title,
+    id: t.id, listingId: t.listing_id, listingTitle: t.listing_title, listingPhoto: t.listing_photo,
+    listingPrice: t.listing_price, listingStatus: t.listing_status,
     sellerId: t.seller_id, sellerName: t.seller_name, buyerId: t.buyer_id, buyerName: t.buyer_name,
-    last: t.last, lastFrom: t.last_from, updatedAt: new Date(t.updated_at).getTime(),
+    last: t.last, lastFrom: t.last_from, updatedAt: ms(t.updated_at),
     unread: !!t.last_from && t.last_from !== u.id && (!t.read_at || t.read_at < t.updated_at),
   })));
 }));
@@ -359,7 +486,7 @@ app.get("/api/threads/:id/messages", wrap(async (req, res) => {
   const r = await q(`SELECT id, from_id, kind, text, amount, at FROM messages WHERE thread_id = $1 ORDER BY id ASC LIMIT 500`, [t.id]);
   await q(`INSERT INTO thread_reads (user_id, thread_id, read_at) VALUES ($1,$2, now())
            ON CONFLICT (user_id, thread_id) DO UPDATE SET read_at = now()`, [u.id, t.id]);
-  res.json(r.rows.map((m) => ({ id: m.id, from: m.from_id, kind: m.kind, text: m.text, amount: m.amount, at: new Date(m.at).getTime() })));
+  res.json(r.rows.map((m) => ({ id: Number(m.id), from: m.from_id, kind: m.kind, text: m.text, amount: m.amount, at: ms(m.at) })));
 }));
 async function addMessage(t, fromId, kind, text, amount) {
   await q(`INSERT INTO messages (thread_id, from_id, kind, text, amount) VALUES ($1,$2,$3,$4,$5)`, [t.id, fromId, kind, text, amount]);
@@ -368,7 +495,7 @@ async function addMessage(t, fromId, kind, text, amount) {
 }
 function parseMsg(b) {
   const kind = b.kind === "offer" ? "offer" : "text";
-  const text = str(b.text, 1000);
+  const text = String(b.text ?? "").trim().slice(0, 1000);
   const amount = kind === "offer" ? Math.round(Number(b.amount)) : null;
   if (kind === "text" && !text) throw new HttpError(400, "Write a message first.");
   if (kind === "offer" && !(amount > 0 && amount < 100000)) throw new HttpError(400, "Enter an offer above $0.");
@@ -377,6 +504,7 @@ function parseMsg(b) {
 // buyer opens (or continues) a conversation from a listing
 app.post("/api/listings/:id/messages", wrap(async (req, res) => {
   const u = needUser(req);
+  limit(req, "msg", 120, 10 * 60e3);
   const r = await q(`SELECT * FROM listings WHERE id = $1`, [req.params.id]);
   const l = r.rows[0];
   if (!l) throw new HttpError(404, "This listing was removed.");
@@ -391,6 +519,7 @@ app.post("/api/listings/:id/messages", wrap(async (req, res) => {
 }));
 app.post("/api/threads/:id/messages", wrap(async (req, res) => {
   const u = needUser(req);
+  limit(req, "msg", 120, 10 * 60e3);
   const t = await threadFor(u, req.params.id);
   const m = parseMsg(req.body);
   if (m.kind === "offer" && u.id !== t.buyer_id) throw new HttpError(400, "Only the buyer can make an offer.");
@@ -404,7 +533,7 @@ app.post("/api/threads/:id/accept", wrap(async (req, res) => {
   const amount = Math.round(Number(req.body.amount));
   const off = await q(`SELECT 1 FROM messages WHERE thread_id=$1 AND kind='offer' AND amount=$2 AND from_id=$3 LIMIT 1`, [t.id, amount, t.buyer_id]);
   if (!off.rows[0]) throw new HttpError(400, "That offer wasn't found in this conversation.");
-  const up = await q(`UPDATE listings SET status='reserved', reserved_for=$2, agreed_price=$3 WHERE id=$1 AND status='active' RETURNING id`, [t.listing_id, t.buyer_id, amount]);
+  const up = await q(`UPDATE listings SET status='reserved', reserved_for=$2, agreed_price=$3, updated_at=now() WHERE id=$1 AND status='active' RETURNING id`, [t.listing_id, t.buyer_id, amount]);
   if (!up.rows[0]) throw new HttpError(409, "This device is already reserved or sold.");
   await addMessage(t, u.id, "sys", `Offer of $${amount} accepted. Reserved for pickup, pay at meetup.`, null);
   res.json({ ok: true });
@@ -429,7 +558,7 @@ app.delete("/api/saved/:id", wrap(async (req, res) => {
 
 app.get("/healthz", wrap(async (req, res) => { await q("SELECT 1"); res.send("ok"); }));
 app.use("/api", (req, res) => res.status(404).json({ error: "Not found." }));
-app.use(express.static(path.join(__dirname, "public"), { maxAge: "1h" }));
+app.use(express.static(path.join(__dirname, "public"), { maxAge: "5m" }));
 app.get("*", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
 app.use((err, req, res, next) => {
