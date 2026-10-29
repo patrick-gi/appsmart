@@ -15,10 +15,14 @@ const CATS = [
   {k:"watch", n:"Apple Watch", p:"Apple Watches"}, {k:"airpods", n:"AirPods", p:"AirPods"}, {k:"other", n:"Accessories", p:"Accessories"}
 ];
 const GRADES = {
-  A:{n:"Like new", d:"No visible marks. Looks unused."},
-  B:{n:"Good", d:"Light wear, minor scuffs. Screen clean."},
-  C:{n:"Fair", d:"Visible wear or scratches. Fully working."}
+  A:{n:"Grade A", t:"Pristine", d:"Flawless or like-new. Zero scratches on screen or chassis."},
+  B:{n:"Grade B", t:"Very Good", d:"Light micro-scratches barely visible under ambient room lighting."},
+  C:{n:"Grade C", t:"Noticeable Wear", d:"Visible scuffs or dings, but 100% operational hardware."}
 };
+const STORAGE = { iphone:["128 GB","256 GB","512 GB","1 TB"], ipad:["64 GB","128 GB","256 GB","512 GB","1 TB","2 TB"], mac:["256 GB","512 GB","1 TB","2 TB"] };
+const CHECKS = [["faceid","Face ID / Touch ID works"],["imei","Clean IMEI / not blacklisted"],["parts","Original parts"]];
+const checksFor = cat => CHECKS.filter(([k])=> k!=="faceid" || ["iphone","ipad","mac"].includes(cat));
+const BATT_HINT = { iphone:"Settings → Battery → Battery Health & Charging.", ipad:"Settings → Battery → Battery Health.", mac:"System Settings → Battery → Battery Health.", watch:"Settings → Battery → Battery Health.", airpods:"Leave blank. AirPods don't report a battery health figure.", other:"Leave blank if the device doesn't report it." };
 const REASONS = [["scam","Looks like a scam"],["stolen","Might be stolen"],["wrong-info","Wrong or misleading details"],["offensive","Offensive content"],["sold-elsewhere","Already sold elsewhere"],["other","Something else"]];
 const catOf = k => CATS.find(c=>c.k===k) || {n:"Device", p:"Devices"};
 const ICON = {
@@ -40,6 +44,14 @@ const I = {
   right:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg>',
   upload:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/></svg>',
   check:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>',
+  bolt:'<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>',
+  cam:'<svg class="cam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  plus:'<svg class="plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  send:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 3 10 14M21 3l-7 18-4-7-7-4z"/></svg>',
+  trend:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',
+  phone:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 5.5h2"/></svg>',
+  unlock:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>',
+  okc:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   shield:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/></svg>'
 };
 
@@ -118,20 +130,23 @@ function cardHTML(l, opts={}){
   const heart = (!opts.preview) ? `<button class="heart" data-act="save" data-id="${esc(l.id)}" aria-pressed="${S.saved.has(l.id)}" aria-label="${S.saved.has(l.id)?"Remove from saved":"Save listing"}">${I.heart}</button>` : "";
   const p=(l.photos||[])[0];
   const ph = opts.previewSrc ? `<img src="${esc(opts.previewSrc)}" alt="">` : p ? `<img src="${esc(photoSrc(p))}" alt="" loading="lazy">` : (ICON[l.cat]||ICON.other);
+  const hasBatt = l.battery!=null && l.battery!=="";
   return `<article class="card" ${opts.preview?"":`data-go="item-${esc(l.id)}" tabindex="0" role="link"`} aria-label="${esc(l.title)}, ${money(l.price)}">
-    <div class="ph">${ph}<div class="over">${st}${heart}</div></div>
+    <div class="ph">${ph}<div class="over">${st}${heart}</div><span class="ptag">${money(l.price)}${l.origPrice&&l.origPrice>l.price?`<s>${money(l.origPrice)}</s>`:""}</span></div>
     <div class="body">
-      <div class="price"><b>${money(l.price)}</b>${l.origPrice&&l.origPrice>l.price?`<s>${money(l.origPrice)}</s>`:""}</div>
-      <h3>${esc(l.title)}</h3>
+      <div class="titlerow"><h3>${esc(shortTitle(l.title))}</h3><span>${l.createdAt?(Date.now()-l.createdAt<60000?"Just now":ago(l.createdAt)):""}</span></div>
       <div class="specline">
         ${l.storage?`<span class="pill">${esc(l.storage)}</span>`:""}
-        <span class="pill">${esc((GRADES[l.grade]||{}).n||l.grade)}</span>
-        ${l.battery!=null&&l.battery!==""?`<span class="pill ${battClass(l.battery)}">${l.battery}%</span>`:""}
-        ${l.lockOff?"":`<span class="pill bad">Locked</span>`}
+        <span class="pill">Grade ${esc(l.grade)}</span>
+        ${hasBatt?`<span class="pill ${battClass(Number(l.battery))}">${Number(l.battery)>=80?I.bolt:""}${Number(l.battery)}% batt</span>`:""}
+        ${l.lockOff?`<span class="pill ok">${I.okc}Lock off</span>`:`<span class="pill bad">Locked</span>`}
       </div>
-      <div class="meta"><span>${I.pin}${esc(placeLabel(l.city,l.state)||"Location not set")}</span><span>${l.createdAt?ago(l.createdAt):""}</span></div>
+      <div class="meta"><span>${I.pin}${esc(placeName(l.city,l.state)||"Location not set")}</span></div>
     </div></article>`;
 }
+// "iPhone 15 Pro, Natural Titanium" -> "iPhone 15 Pro" on cards; full title on the listing page
+const shortTitle = t => { const i=String(t||"").indexOf(","); return i>3 ? t.slice(0,i) : t; };
+const placeName = (city, state) => city && state ? `${city}, ${STATES[state]||state}` : state ? STATES[state]||state : "";
 const skeletons = n => Array.from({length:n},()=>`<div class="card cardsk"><div class="ph"></div><div class="body"><div class="line" style="width:40%"></div><div class="line" style="width:85%"></div><div class="line" style="width:60%"></div></div></div>`).join("");
 
 /* ---------- views: home ---------- */
@@ -166,7 +181,7 @@ function viewHome(){
       <div class="dev"><div class="ic">${ICON.iphone.replace('width="64" height="64"','width="40" height="40"')}</div><div><b>iPhone 15 Pro · 256 GB</b><div class="muted" style="font-size:13.5px">Example listing</div></div></div>
       <ul>
         <li><span>Battery health</span><b><span class="meter"><i style="width:92%;background:var(--ok)"></i></span>92%</b></li>
-        <li><span>Condition</span><b>Like new</b></li>
+        <li><span>Condition</span><b>Grade A · Pristine</b></li>
         <li><span>Activation Lock</span><b class="ok">Off</b></li>
         <li><span>Pickup</span><b>City, State</b></li>
         <li><span>Payment</span><b>In person</b></li>
@@ -238,7 +253,7 @@ function viewShop(){
         <fieldset><legend class="eyebrow">Device</legend><div class="chips">
           <button class="chip" data-act="cat" data-k="" aria-pressed="${!f.cat}">All</button>
           ${CATS.map(c=>`<button class="chip" data-act="cat" data-k="${c.k}" aria-pressed="${f.cat===c.k}">${c.n}</button>`).join("")}</div></fieldset>
-        <fieldset><legend class="eyebrow">Condition</legend><div class="chips">${Object.entries(GRADES).map(([g,v])=>`<button class="chip" data-act="grade" data-k="${g}" aria-pressed="${f.grades.has(g)}">${v.n}</button>`).join("")}</div></fieldset>
+        <fieldset><legend class="eyebrow">Condition</legend><div class="chips">${Object.entries(GRADES).map(([g,v])=>`<button class="chip" data-act="grade" data-k="${g}" aria-pressed="${f.grades.has(g)}" title="${esc(v.t)}">${v.n}</button>`).join("")}</div></fieldset>
         <fieldset><legend class="eyebrow">Price</legend><div class="row2">
           <div class="prefix"><span>$</span><input class="input" id="fmin" type="number" min="0" inputmode="numeric" placeholder="Min" value="${esc(f.min)}" aria-label="Minimum price"></div>
           <div class="prefix"><span>$</span><input class="input" id="fmax" type="number" min="0" inputmode="numeric" placeholder="Max" value="${esc(f.max)}" aria-label="Maximum price"></div></div></fieldset>
@@ -271,7 +286,8 @@ function sheetHTML(l){
     <dl>
       <dt>Device</dt><dd>${esc(catOf(l.cat).n)}</dd>
       ${l.storage?`<dt>Storage</dt><dd>${esc(l.storage)}</dd>`:""}
-      <dt>Condition</dt><dd>${esc(g.n)}<br><span class="muted" style="font-family:var(--font)">${esc(g.d)}</span></dd>
+      <dt>Condition</dt><dd>${esc(g.n)} · ${esc(g.t)}<br><span class="muted" style="font-family:var(--font)">${esc(g.d)}</span></dd>
+      ${(l.checks||[]).length?`<dt>Seller confirms</dt><dd>${l.checks.map(k=>esc((CHECKS.find(c=>c[0]===k)||[k,k])[1])).join("<br>")}</dd>`:""}
       ${l.battery!=null?`<dt>Battery health</dt><dd><span class="meter"><i style="width:${Math.max(0,Math.min(100,l.battery))}%;background:${battColor(l.battery)}"></i></span>${l.battery}%</dd>`:""}
       <dt>Activation Lock</dt><dd style="color:var(--${l.lockOff?"ok":"bad"})">${l.lockOff?"Off · ready to set up":"On · seller must remove"}</dd>
       <dt>Pickup</dt><dd>${esc(placeLabel(l.city,l.state)||"Ask seller")}</dd>
@@ -369,16 +385,49 @@ function pingView(l){
   if(!isMe(l.sellerId)) api("POST",`/api/listings/${encodeURIComponent(l.id)}/view`).catch(()=>{});
 }
 
-/* ---------- views: sell ---------- */
-const blankDraft = () => ({title:"",cat:"iphone",storage:"",grade:"A",battery:"",lockOff:true,price:"",state:(S.me&&S.me.state)||S.loc.state||"",city:(S.me&&S.me.city)||S.loc.city||"",desc:"",photos:[]});
+/* ---------- views: sell (mockup layout) ---------- */
+const blankDraft = () => { const st=(S.me&&S.me.state)||S.loc.state||"", ci=(S.me&&S.me.city)||S.loc.city||""; return {title:"",cat:"iphone",storage:"",grade:"A",battery:"",lockOff:true,checks:[],price:"",state:st,city:ci,place:ci&&st?`${ci}, ${STATES[st]}`:"",desc:"",photos:[]}; };
+// "Mesa, Arizona" | "Mesa, AZ" | "mesa az" -> {city, state}
+function parsePlace(v){
+  const t=String(v||"").trim().replace(/\s+/g," ");
+  let city="", st="";
+  if(t.includes(",")){ const i=t.lastIndexOf(","); city=t.slice(0,i).trim(); st=t.slice(i+1).trim(); }
+  else { const m=t.match(/^(.+)\s+([A-Za-z]{2})$/); if(m){ city=m[1].trim(); st=m[2]; } }
+  const code = STATES[st.toUpperCase()] ? st.toUpperCase() : Object.keys(STATES).find(k=>STATES[k].toLowerCase()===st.toLowerCase());
+  if(!code || !city || !/^[A-Za-z][A-Za-z .'\-]*$/.test(city)) return null;
+  return {state:code, city:city.toLowerCase().replace(/(^|[\s\-'.])([a-z])/g,(m,p,c)=>p+c.toUpperCase())};
+}
+function placeList(){
+  const set=new Set();
+  for(const c of STATE_CODES){ (CITIES[c]||[]).forEach(ci=>set.add(`${ci}, ${STATES[c]}`)); }
+  S.listings.forEach(l=>{ if(l.city&&l.state&&STATES[l.state]) set.add(`${l.city}, ${STATES[l.state]}`); });
+  return `<datalist id="places">${[...set].sort().map(p=>`<option value="${esc(p)}">`).join("")}</datalist>`;
+}
 function draftChecks(d){
   return [
-    ["Add at least one photo", d.photos.length>0],
-    ["Name the model", !!d.title.trim()],
-    ["Set a price", Number(d.price)>0],
-    ["Choose your state", !!d.state],
-    ["Enter your city", !!d.city.trim()],
+    ["add at least one photo", d.photos.length>0],
+    ["enter the model and colour", !!d.title.trim()],
+    ["set a price", Number(d.price)>0],
+    ["enter your pickup area as City, State", !!(d.state && d.city)],
   ];
+}
+function marketEstimate(d){
+  const model=(d.title||"").toLowerCase().replace(/,.*$/,"").trim();
+  if(model.length<5) return "";
+  const xs=S.listings.filter(l=>l.cat===d.cat && l.id!==d._for && l.status!=="sold" && l.title.toLowerCase().startsWith(model) && (!d.storage||l.storage===d.storage) && l.grade===d.grade).map(l=>l.price).sort((a,b)=>a-b);
+  if(xs.length<2) return "";
+  return `<div class="estimate">${I.trend}<span>Market estimate: ${money(xs[0])} – ${money(xs[xs.length-1])} for ${esc(d.storage?d.storage+" ":"")}Grade ${esc(d.grade)} <span class="muted" style="font-weight:500">(${xs.length} listed)</span></span></div>`;
+}
+function photoSlotsHTML(d){
+  const tiles = d.photos.map((p,i)=>`<div class="slot photo" draggable="true" data-i="${i}"><img src="${esc(photoSrc(p))}" alt="Photo ${i+1}">${i===0?'<span class="prim">Primary</span>':""}
+      <span class="mv">${i>0?`<button type="button" data-act="movePhoto" data-i="${i}" data-d="-1" aria-label="Move photo ${i+1} earlier">‹</button>`:""}${i<d.photos.length-1?`<button type="button" data-act="movePhoto" data-i="${i}" data-d="1" aria-label="Move photo ${i+1} later">›</button>`:""}</span>
+      <button type="button" class="rm" data-act="rmPhoto" data-i="${i}" aria-label="Remove photo ${i+1}">×</button></div>`);
+  for(let i=0;i<S.uploading;i++) tiles.push(`<div class="slot busy"><span class="spin" aria-label="Uploading"></span></div>`);
+  const n=d.photos.length+S.uploading;
+  const guides=["Cover Photo","Front & Screen","Back & Sides","Charging Port"];
+  if(n<8 && n<guides.length) tiles.push(`<button type="button" class="slot" data-act="pickPhotos">${I.cam}${guides[n]}</button>`);
+  if(n+1<8) tiles.push(`<button type="button" class="slot" data-act="pickPhotos">${I.plus}Add Angle</button>`);
+  return tiles.join("");
 }
 function viewSell(editId){
   if(!S.me){ goSignIn(); return ""; }
@@ -387,76 +436,80 @@ function viewSell(editId){
       const l = findListing(editId);
       if(!l) return `<div class="wrap" style="padding-block:30px"><div class="empty"><h2>${S.loaded?"This listing was removed":"Loading…"}</h2></div></div>`;
       if(!isMe(l.sellerId)) return `<div class="wrap" style="padding-block:30px"><div class="empty"><h2>Only the seller can edit this listing</h2><a class="btn" href="#item-${esc(l.id)}">Back to listing</a></div></div>`;
-      S.draft = {title:l.title,cat:l.cat,storage:l.storage,grade:l.grade,battery:l.battery??"",lockOff:l.lockOff,price:l.price,state:l.state,city:l.city,desc:l.desc,photos:[...(l.photos||[])],status:l.status,_for:editId};
+      S.draft = {title:l.title,cat:l.cat,storage:l.storage,grade:l.grade,battery:l.battery??"",lockOff:l.lockOff,checks:[...(l.checks||[])],price:l.price,state:l.state,city:l.city,place:l.city&&l.state?`${l.city}, ${STATES[l.state]}`:"",desc:l.desc,photos:[...(l.photos||[])],status:l.status,_for:editId};
     } else {
       const saved = lsGet("as_draft", null);
       S.draft = saved ? {...blankDraft(), ...saved, _for:"new"} : {...blankDraft(), _for:"new"};
+      if(!Array.isArray(S.draft.checks)) S.draft.checks=[];
+      if(!S.draft.place) S.draft.place = S.draft.city&&S.draft.state?`${S.draft.city}, ${STATES[S.draft.state]}`:"";
     }
     S.draftErr="";
   }
-  const d=S.draft, checks=draftChecks(d), done=checks.filter(c=>c[1]).length;
-  const preview = {...d, id:"preview", price:Number(d.price)||0, battery:d.battery===""?null:Number(d.battery), createdAt:Date.now(), status:"active", title:d.title||"Your device title"};
-  const uploadingTiles = Array.from({length:S.uploading},()=>`<figure class="uploading"><span class="spin" aria-label="Uploading"></span></figure>`).join("");
-  return `<div class="wrap sellwrap">
-  <nav class="crumbs"><a href="${editId?"#item-"+esc(editId):"#home"}">${editId?"Back to listing":"Home"}</a> / <span>${editId?"Edit":"Sell"}</span></nav>
-  <div class="pagehead" style="padding-top:6px"><div><div class="eyebrow">${editId?"Edit listing":"New listing"}</div><h1>${editId?"Update your device":"Sell your Apple device"}</h1></div>${!editId&&(d.title||d.photos.length)?`<button class="btn sm ghost" data-act="clearDraft">Start over</button>`:""}</div>
-  <div class="sell">
-    <form class="form" data-form="sell" novalidate>
-      <section class="fsec" aria-labelledby="h-photos"><h2 id="h-photos">Photos</h2>
-        <div class="drop" id="drop" data-act="pickPhotos" role="button" tabindex="0" aria-label="Add photos">
-          <span class="ic">${I.upload}</span><b>Drag photos here or click to upload</b>
-          <span class="muted" style="font-size:13.5px">Up to 8 · JPEG, PNG or HEIC from your phone · First photo is the cover</span>
-        </div>
-        <input id="photoIn" type="file" accept="image/*" multiple hidden>
-        ${d.photos.length||S.uploading?`<div class="photos" id="photoGrid">${d.photos.map((p,i)=>`<figure draggable="true" data-i="${i}"><img src="${esc(photoSrc(p))}" alt="Photo ${i+1}">${i===0?'<span class="cover">Cover</span>':""}<div class="ctl">${i>0?`<button type="button" data-act="movePhoto" data-i="${i}" data-d="-1" aria-label="Move photo ${i+1} earlier">‹</button>`:""}${i<d.photos.length-1?`<button type="button" data-act="movePhoto" data-i="${i}" data-d="1" aria-label="Move photo ${i+1} later">›</button>`:""}<button type="button" data-act="rmPhoto" data-i="${i}" aria-label="Remove photo ${i+1}">×</button></div></figure>`).join("")}${uploadingTiles}</div><span class="muted" style="font-size:12.5px">Drag to reorder. Show the screen turned on, the back, and any marks.</span>`:""}
-      </section>
+  const d=S.draft;
+  const storages = STORAGE[d.cat]||[];
+  const batt = d.battery===""||d.battery==null?null:Number(d.battery);
+  return `<div class="wrap"><form class="sellv3" data-form="sell" novalidate>
+    <div class="shead">
+      <div class="top"><span class="eyebrow">${editId?"Edit listing":"New listing"}</span><span class="minttag">${I.bolt}Free to list</span></div>
+      <h1>${editId?"Update your listing":"Sell an Apple Device"}</h1>
+      <p class="sub">Accurate details and a clear grade help buyers trust your listing and decide faster.</p>
+    </div>
+    <div class="devtabs" role="radiogroup" aria-label="Device type">${CATS.map(c=>`<label><input type="radio" name="cat" value="${c.k}" ${d.cat===c.k?"checked":""}>${ICON[c.k].replace('width="64" height="64"','width="18" height="18"')}${c.k==="watch"?"Watch":c.n}</label>`).join("")}</div>
 
-      <section class="fsec" aria-labelledby="h-dev"><h2 id="h-dev">Device</h2>
-        <div class="tiles" role="radiogroup" aria-label="Device type">${CATS.map(c=>`<label><input type="radio" name="cat" value="${c.k}" ${d.cat===c.k?"checked":""}>${ICON[c.k]}${c.n}</label>`).join("")}</div>
-        <div class="field"><label for="title">Model and colour</label><input id="title" name="title" maxlength="80" list="models" placeholder="${esc((MODELS[d.cat]||[])[4]||"Model")}, Blue" value="${esc(d.title)}" autocomplete="off">
-          <datalist id="models">${(MODELS[d.cat]||[]).map(m=>`<option value="${esc(m)}">`).join("")}</datalist><span class="hint">Start typing to pick a model, then add the colour.</span></div>
-        <div class="field"><label for="storage">Storage</label><select id="storage" name="storage">${["","64 GB","128 GB","256 GB","512 GB","1 TB","2 TB"].map(s=>`<option value="${s}" ${d.storage===s?"selected":""}>${s||"Not applicable"}</option>`).join("")}</select></div>
-      </section>
+    <div class="sgrid">
+      <div class="scol">
+        <section class="sbox" id="photoBox" aria-labelledby="h-ph">
+          <div class="bh"><h2 id="h-ph">Photos</h2><span class="note">${d.photos.length} of 8 uploaded</span></div>
+          <div class="slots" id="photoGrid">${photoSlotsHTML(d)}</div>
+          <input id="photoIn" type="file" accept="image/*" multiple hidden>
+          <p class="note">Clear photos of corners, charging port, and screen with display ON speed up sales. Drag to reorder; the first photo is the primary.</p>
+        </section>
 
-      <section class="fsec" aria-labelledby="h-cond"><h2 id="h-cond">Condition</h2>
-        <div class="grades" role="radiogroup" aria-label="Condition">${Object.entries(GRADES).map(([k,g])=>`<label><input type="radio" name="grade" value="${k}" ${d.grade===k?"checked":""}><b>${g.n}</b><span>${g.d}</span></label>`).join("")}</div>
-        <div class="field"><label for="battery">Battery health</label>
-          <div class="range"><input type="range" id="battRange" min="50" max="100" value="${d.battery===""?100:Number(d.battery)}" aria-label="Battery health slider" ${d.battery===""?"disabled":""}><output id="battOut">${d.battery===""?"—":d.battery+"%"}</output></div>
-          <label class="check" style="font-size:13.5px"><input type="checkbox" id="battNA" ${d.battery===""?"checked":""}> Not shown on this device (AirPods, accessories, Macs without a reading)</label>
-          <span class="hint">On iPhone: Settings → Battery → Battery Health. On Mac: System Settings → Battery.</span></div>
-        <label class="toggle"><input type="checkbox" name="lockOff" id="lockOff" ${d.lockOff?"checked":""}><span><b>Activation Lock is off</b><span class="muted" style="display:block;font-size:13.5px">You've signed out of iCloud and turned off Find My. Buyers filter for this.</span></span></label>
-      </section>
+        <section class="sbox" aria-labelledby="h-spec"><h2 id="h-spec">Device Specifications</h2>
+          <div class="field"><label for="title">Model and Colour</label>
+            <div class="withicon">${I.phone}<input id="title" name="title" maxlength="80" list="models" placeholder="${esc((MODELS[d.cat]||[])[4]||"Model")}, Blue" value="${esc(d.title)}" autocomplete="off"></div>
+            <datalist id="models">${(MODELS[d.cat]||[]).map(m=>`<option value="${esc(m)}">`).join("")}</datalist></div>
+          ${storages.length?`<div class="field"><span class="lbl">Storage Capacity</span>
+            <div class="seg" role="radiogroup" aria-label="Storage capacity">${storages.map(x=>`<label><input type="radio" name="storage" value="${x}" ${d.storage===x?"checked":""}>${x}</label>`).join("")}</div></div>`:""}
+          <div class="field"><label class="lbl" for="battery"><span>Battery Maximum Capacity</span>${batt==null?`<span class="note">Optional</span>`:`<span class="bstat ${batt<80?"low":""}">${batt>=80?I.bolt+"Normal condition":"Service recommended"}</span>`}</label>
+            <div class="battrow"><div class="suffix"><input id="battery" name="battery" type="number" min="0" max="100" inputmode="numeric" placeholder="e.g. 89" value="${esc(d.battery)}"><span>%</span></div>
+              <div class="peak" aria-hidden="true"><div class="ln"><span>Peak</span><b style="color:${batt==null?"var(--muted)":battColor(batt)}">${batt==null?"—":batt+"%"}</b></div><div class="tr"><i style="width:${batt==null?0:Math.max(0,Math.min(100,batt))}%;background:${batt==null?"var(--line)":battColor(batt)}"></i></div></div></div>
+            <span class="hint">${esc(BATT_HINT[d.cat]||"")}</span></div>
+        </section>
 
-      <section class="fsec" aria-labelledby="h-price"><h2 id="h-price">Price and pickup</h2>
-        <div class="field"><label for="price">Price</label><div class="prefix"><span>$</span><input id="price" name="price" type="number" min="1" step="5" inputmode="numeric" placeholder="450" value="${esc(d.price)}"></div>${similarPriceHint(d)}</div>
-        <div class="row2">
-          <div class="field"><label for="state">State</label><select id="state" name="state">${stateOptions(d.state)}</select></div>
-          <div class="field"><label for="city">City</label><input id="city" name="city" list="sellCities" maxlength="40" placeholder="${esc((CITIES[d.state]||["City"])[0])}" value="${esc(d.city)}" autocomplete="address-level2">${d.state?cityList("sellCities",d.state):""}</div>
-        </div>
-        <span class="hint muted" style="font-size:12.5px">Only your city and state are shown. Share an exact meetup spot in chat.</span>
-      </section>
+        <section class="sbox" aria-labelledby="h-cond"><div class="bh"><h2 id="h-cond">Cosmetic Condition</h2></div>
+          <div class="gradelist" role="radiogroup" aria-label="Cosmetic condition">${Object.entries(GRADES).map(([k,g])=>`<label><input type="radio" name="grade" value="${k}" ${d.grade===k?"checked":""}><span><b>${g.n} · ${g.t}</b>${k==="A"?'<span class="toptag">Top Value</span>':""}<span class="gd">${g.d}</span></span></label>`).join("")}</div>
+          <div class="lockcard">
+            <label class="lk"><input type="checkbox" name="lockOff" id="lockOff" ${d.lockOff?"checked":""}><span><b>Activation Lock is Off ${I.unlock}</b><span class="d">Device is fully signed out of Apple ID, iCloud, and Find My.</span></span></label>
+            <div class="checks">${checksFor(d.cat).map(([k,t])=>`<label><input type="checkbox" name="chk" value="${k}" ${d.checks.includes(k)?"checked":""}>${t}</label>`).join("")}<p class="chknote">Confirmed by you, the seller. Buyers can check these at pickup.</p></div>
+          </div>
+        </section>
 
-      <section class="fsec" aria-labelledby="h-desc"><h2 id="h-desc">Details</h2>
-        <div class="field"><label for="desc">Description <span class="muted" style="font-weight:400">(optional)</span></label><textarea id="desc" name="desc" rows="5" maxlength="1200" placeholder="What's included (box, charger, case), any repairs, AppleCare, why you're selling…">${esc(d.desc)}</textarea><span class="hint" id="descCount">${(d.desc||"").length} / 1200</span></div>
-      </section>
-      ${S.draftErr?`<p class="err" role="alert">${esc(S.draftErr)}</p>`:""}
-      <div class="actions"><button class="btn primary lg" type="submit" ${S.busy||S.uploading?"disabled":""}>${S.busy?"Saving…":S.uploading?"Waiting for photos…":editId?"Save changes":"Post listing"}</button><a class="btn ghost lg" href="${editId?"#item-"+esc(editId):"#home"}">Cancel</a></div>
-    </form>
-    <aside class="preview-col">
-      <div class="progress"><div style="display:flex;justify-content:space-between"><b>${done===checks.length?"Ready to post":"Almost there"}</b><span class="muted mono">${done}/${checks.length}</span></div>
-        <div class="bar-p"><i style="width:${done/checks.length*100}%"></i></div>
-        <ul>${checks.map(([t,ok])=>`<li class="${ok?"done":""}"><i></i>${t}</li>`).join("")}</ul></div>
-      <div class="eyebrow">Preview</div><div id="previewCard">${cardHTML(preview,{preview:true})}</div>
-    </aside>
-  </div></div>`;
+        <section class="sbox" aria-labelledby="h-price"><h2 id="h-price">Price &amp; Location</h2>
+          <div class="field"><label class="lbl" for="price"><span>Listing Price (USD)</span><span class="note">Zero seller commission</span></label>
+            <div class="bigprice"><span>$</span><input id="price" name="price" type="number" min="1" step="5" inputmode="numeric" placeholder="750" value="${esc(d.price)}"></div>
+            <div id="estimate">${marketEstimate(d)}</div></div>
+          <div class="field"><label for="place">Pickup Area / Safe Exchange Spot</label>
+            <div class="withicon">${I.pin.replace('width="15" height="15"','width="18" height="18"')}<input id="place" name="place" list="places" placeholder="City, State (e.g. Mesa, Arizona)" value="${esc(d.place)}" autocomplete="off"></div>${placeList()}
+            <span class="hint" id="placeHint">${d.place && !(d.state&&d.city) ? '<span style="color:var(--bad)">Use “City, State”, for example “Mesa, Arizona”.</span>' : "Only the city and state are shown. Agree an exact public spot in chat."}</span></div>
+          <div class="field"><label for="desc">Seller Notes</label><textarea id="desc" name="desc" rows="4" maxlength="1200" placeholder="What's included (box, cable, case), any repairs, AppleCare…">${esc(d.desc)}</textarea></div>
+        </section>
+      </div>
+
+      <aside class="side3">
+        <div class="ph3"><span class="eyebrow">Buyer card preview</span><span class="live"><i></i>Live preview</span></div>
+        <div id="previewCard">${previewCard(d)}</div>
+        <div class="safety">${I.shield}<span>Buyers pay upon pickup. Always meet in a public location and let the buyer test the device before accepting payment.</span></div>
+        ${S.draftErr?`<p class="err" role="alert">${esc(S.draftErr)}</p>`:""}
+        <button class="btn primary publish" type="submit" id="publishBtn" ${S.busy||S.uploading?"disabled":""}>${I.send}<span id="publishLbl">${publishLabel(d, editId)}</span></button>
+        <p class="fine">By publishing, you confirm this device is yours to sell and the details above are accurate.</p>
+        ${!editId&&(d.title||d.photos.length)?`<button type="button" class="btn sm ghost" data-act="clearDraft" style="align-self:center">Clear and start over</button>`:editId?`<a class="btn sm ghost" href="#item-${esc(editId)}" style="align-self:center">Cancel</a>`:""}
+      </aside>
+    </div>
+  </form></div>`;
 }
-function similarPriceHint(d){
-  const t=(d.title||"").toLowerCase().replace(/,.*$/,"").trim();
-  if(t.length<5) return `<span class="hint">Buyers pay you in person at pickup.</span>`;
-  const xs=S.listings.filter(l=>l.cat===d.cat && l.title.toLowerCase().startsWith(t) && l.id!==d._for).map(l=>l.price).sort((a,b)=>a-b);
-  if(xs.length<2) return `<span class="hint">Buyers pay you in person at pickup.</span>`;
-  return `<span class="hint">Similar listings: ${money(xs[0])} to ${money(xs[xs.length-1])} (${xs.length} listed)</span>`;
-}
+const publishLabel = (d, editId) => S.busy ? "Publishing…" : S.uploading ? "Waiting for photos…" : `${editId?"Save Changes":"Publish Listing"}${Number(d.price)>0?" · "+money(d.price):""}`;
+const previewCard = d => cardHTML({...d, id:"preview", price:Number(d.price)||0, battery:d.battery===""||d.battery==null?null:Number(d.battery), createdAt:Date.now(), status:"active", title:d.title||"Your device"},{preview:true});
 function saveDraftLocal(){ if(S.draft && S.draft._for==="new"){ const {_for,...rest}=S.draft; lsSet("as_draft", rest); } }
 
 /* ---------- views: mine / saved / seller / account ---------- */
@@ -601,13 +654,16 @@ function paintChrome(){
   const n=S.threads.filter(t=>t.unread).length;
   $("#unread").innerHTML = n?`<span class="badge">${n}</span>`:"";
   $("#unreadTab").innerHTML = n?`<span class="badge">${n}</span>`:"";
+  $("#unreadBell").innerHTML = n?`<span class="badge">${n}</span>`:"";
+  $("#pageLabel").textContent = {sell:"Sell",edit:"Edit",inbox:"Messages",mine:"Profile",account:"Account",saved:"Saved",signin:"Sign in",seller:"Seller"}[S.route]||"";
+  document.body.classList.toggle("compact", ["sell","edit","inbox","mine","account","saved","signin","seller"].includes(S.route));
   $("#locBtn").innerHTML = `${I.pin}<span>${esc(locLabel())}</span>`;
   $("#who").innerHTML = S.me
     ? `<button class="avbtn" data-act="menu" aria-haspopup="true" aria-expanded="${S.menuOpen}" aria-label="Account menu">${avatar(S.me.id,S.me.name,36)}</button>
        ${S.menuOpen?`<div class="menu" role="menu"><div class="mhead"><b>${esc(S.me.name)}</b><div class="muted" style="font-size:13px">${esc(placeLabel(S.me.city,S.me.state)||S.me.email||"")}</div></div>
          <a href="#mine" role="menuitem">My listings</a><a href="#saved" role="menuitem">Saved</a><a href="#inbox" role="menuitem">Messages</a><a href="#seller-${esc(S.me.id)}" role="menuitem">Public profile</a><a href="#account" role="menuitem">Account settings</a><button data-act="logout" role="menuitem">Sign out</button></div>`:""}`
     : `<a class="btn sm" href="#signin">Sign in</a>`;
-  const tab = {home:"home",shop:"shop",item:"shop",sell:"sell",edit:"sell",inbox:"inbox",mine:"mine",account:"mine",saved:"mine",signin:"mine"}[S.route];
+  const tab = {home:"home",shop:"shop",item:"home",sell:"sell",edit:"sell",inbox:"inbox",mine:"mine",account:"mine",saved:"mine",signin:"mine",seller:"home"}[S.route];
   $$(".tabbar a").forEach(a=>a.classList.toggle("on", a.dataset.tab===tab));
   const tq=$("#q"); if(tq && document.activeElement!==tq) tq.value = S.route==="shop" ? S.f.q : "";
 }
@@ -703,9 +759,9 @@ async function addPhotos(files){
 }
 async function saveListing(){
   const d=S.draft; const isNew=d._for==="new";
-  const body={title:d.title,cat:d.cat,storage:d.storage,grade:d.grade,battery:d.battery===""?null:Number(d.battery),lockOff:!!d.lockOff,price:Number(d.price),state:d.state,city:d.city,desc:d.desc,photos:d.photos};
+  const body={title:d.title,cat:d.cat,storage:d.storage,grade:d.grade,battery:d.battery===""?null:Number(d.battery),lockOff:!!d.lockOff,checks:d.checks,price:Number(d.price),state:d.state,city:d.city,desc:d.desc,photos:d.photos};
   const miss = draftChecks(d).filter(c=>!c[1]).map(c=>c[0].toLowerCase());
-  if(miss.length && !(miss.length===1 && miss[0].startsWith("add at least") && !isNew)){ S.draftErr = "To post, "+miss.join(", ")+"."; render(); $(".err")&&$(".err").scrollIntoView({block:"center",behavior:"smooth"}); return; }
+  if(miss.length && !(miss.length===1 && miss[0].startsWith("add at least") && !isNew)){ S.draftErr = "To publish, "+miss.join(", ")+"."; render(); $(".err")&&$(".err").scrollIntoView({block:"center",behavior:"smooth"}); return; }
   S.busy=true; S.draftErr=""; render();
   try{
     let id=d._for;
@@ -735,6 +791,7 @@ document.addEventListener("click", async e => {
   switch(a){
     case "menu": S.menuOpen=!S.menuOpen; paintChrome(); break;
     case "openLoc": locDialog(); break;
+    case "focusSearch": setTimeout(()=>{ const q=$("#q"); if(q) q.focus(); },80); break;
     case "closeDlg": closeDialog(); break;
     case "useMyLoc": setLoc(S.me.state,S.me.city); closeDialog(); afterLocChange(); break;
     case "allStates": S.allStates=!S.allStates; render(true); break;
@@ -769,7 +826,6 @@ document.addEventListener("click", async e => {
 });
 document.addEventListener("keydown", e => {
   if(e.key==="Enter" && e.target.matches(".card[data-go]")) location.hash=e.target.dataset.go;
-  if((e.key==="Enter"||e.key===" ") && e.target.id==="drop"){ e.preventDefault(); $("#photoIn").click(); }
   if(e.key==="Escape" && S.menuOpen){ S.menuOpen=false; paintChrome(); }
   if(S.route==="item" && !e.target.closest("input,textarea,select") && (e.key==="ArrowLeft"||e.key==="ArrowRight")){
     const l=findListing(S.param); const n=(l&&l.photos||[]).length; if(n>1){ S.photoIx=(S.photoIx+(e.key==="ArrowRight"?1:-1)+n)%n; render(true); }
@@ -816,10 +872,10 @@ document.addEventListener("input", e => {
   if(el.id==="accState"){ const dl=$("#accCities"); const html=el.value?cityList("accCities",el.value):""; if(dl) dl.outerHTML=html||"<span></span>"; else if(html) $("#accCity").insertAdjacentHTML("afterend",html); return; }
   if(S.draft && el.closest('[data-form="sell"]')){
     const d=S.draft;
-    if(el.id==="battRange"){ d.battery=el.value; $("#battOut").textContent=el.value+"%"; }
+    if(el.id==="place"){ d.place=el.value; const p=parsePlace(el.value); d.state=p?p.state:""; d.city=p?p.city:"";
+      $("#placeHint").innerHTML = !el.value.trim()||p ? "Only the city and state are shown. Agree an exact public spot in chat." : '<span style="color:var(--bad)">Use “City, State”, for example “Mesa, Arizona”.</span>'; }
     else if(el.name && !["radio","checkbox"].includes(el.type) && el.tagName!=="SELECT") d[el.name]=el.value;
-    if(el.id==="desc") $("#descCount").textContent=el.value.length+" / 1200";
-    saveDraftLocal(); refreshSellSide();
+    saveDraftLocal(); refreshSellSide(el.id);
   }
 });
 document.addEventListener("change", e => {
@@ -835,36 +891,43 @@ document.addEventListener("change", e => {
   if(el.id==="photoIn" && el.files.length){ addPhotos(el.files); el.value=""; return; }
   if(S.draft && el.closest('[data-form="sell"]')){
     const d=S.draft;
-    if(el.id==="battNA"){ d.battery = el.checked ? "" : "100"; }
-    else if(el.name==="lockOff") d.lockOff=el.checked;
-    else if(el.name==="state"){ d.state=el.value; if(!(CITIES[d.state]||[]).includes(d.city)) d.city=""; }
-    else if(el.type==="radio"||el.tagName==="SELECT") d[el.name]=el.value;
+    // toggles, grade and storage change values only: update in place so the page doesn't jump
+    if(el.name==="lockOff"){ d.lockOff=el.checked; saveDraftLocal(); refreshSellSide("title"); return; }
+    if(el.name==="chk"){ d.checks = $$('input[name=chk]:checked').map(x=>x.value); saveDraftLocal(); return; }
+    if(el.name==="grade"||el.name==="storage"){ d[el.name]=el.value; saveDraftLocal(); refreshSellSide("title"); return; }
+    if(el.name==="cat"){ d.cat=el.value; if(!(STORAGE[d.cat]||[]).includes(d.storage)) d.storage=""; d.checks=d.checks.filter(k=>checksFor(d.cat).some(c=>c[0]===k)); if(["airpods","other"].includes(d.cat)) d.battery=""; }
+    else if(el.type==="radio") d[el.name]=el.value;
     else return;
     saveDraftLocal(); render(true);
   }
-});
-function refreshSellSide(){
-  const d=S.draft, col=$("#previewCard"); if(!col) return;
-  col.innerHTML=cardHTML({...d,id:"preview",price:Number(d.price)||0,battery:d.battery===""?null:Number(d.battery),createdAt:Date.now(),status:"active",title:d.title||"Your device title"},{preview:true});
-  const checks=draftChecks(d), done=checks.filter(c=>c[1]).length, box=$(".progress");
-  if(box) box.innerHTML=`<div style="display:flex;justify-content:space-between"><b>${done===checks.length?"Ready to post":"Almost there"}</b><span class="muted mono">${done}/${checks.length}</span></div><div class="bar-p"><i style="width:${done/checks.length*100}%"></i></div><ul>${checks.map(([t,ok])=>`<li class="${ok?"done":""}"><i></i>${t}</li>`).join("")}</ul>`;
+});;
+function refreshSellSide(changedId){
+  const d=S.draft; if(!d) return;
+  const col=$("#previewCard"); if(col) col.innerHTML=previewCard(d);
+  const lbl=$("#publishLbl"); if(lbl) lbl.textContent=publishLabel(d, d._for==="new"?null:d._for);
+  if(changedId==="battery"){
+    const b=d.battery===""?null:Number(d.battery); const f=$("label[for=battery]");
+    if(f) f.innerHTML=`<span>Battery Maximum Capacity</span>${b==null?`<span class="note">Optional</span>`:`<span class="bstat ${b<80?"low":""}">${b>=80?I.bolt+"Normal condition":"Service recommended"}</span>`}`;
+    const pk=$(".peak"); if(pk) pk.innerHTML=`<div class="ln"><span>Peak</span><b style="color:${b==null?"var(--muted)":battColor(b)}">${b==null?"—":b+"%"}</b></div><div class="tr"><i style="width:${b==null?0:Math.max(0,Math.min(100,b))}%;background:${b==null?"var(--line)":battColor(b)}"></i></div>`;
+  }
+  if(changedId==="title"){ const e=$("#estimate"); if(e) e.innerHTML=marketEstimate(d); }
 }
 // photo drag and drop: files onto the drop zone, and reordering within the grid
 let dragFrom=null;
-document.addEventListener("dragstart", e => { const fig=e.target.closest && e.target.closest("#photoGrid figure"); if(fig){ dragFrom=Number(fig.dataset.i); fig.classList.add("dragging"); e.dataTransfer.effectAllowed="move"; } });
-document.addEventListener("dragend", () => { dragFrom=null; $$("#photoGrid figure").forEach(f=>f.classList.remove("dragging","target")); });
+document.addEventListener("dragstart", e => { const fig=e.target.closest && e.target.closest("#photoGrid .slot.photo"); if(fig){ dragFrom=Number(fig.dataset.i); fig.classList.add("dragging"); e.dataTransfer.effectAllowed="move"; } });
+document.addEventListener("dragend", () => { dragFrom=null; $$("#photoGrid .slot.photo").forEach(f=>f.classList.remove("dragging","target")); });
 document.addEventListener("dragover", e => {
   if(S.route!=="sell"&&S.route!=="edit") return;
-  const fig=e.target.closest && e.target.closest("#photoGrid figure");
-  if(dragFrom!=null && fig){ e.preventDefault(); $$("#photoGrid figure").forEach(f=>f.classList.toggle("target", f===fig)); return; }
-  if(e.dataTransfer && [...e.dataTransfer.types].includes("Files")){ e.preventDefault(); const dz=$("#drop"); dz&&dz.classList.add("over"); }
+  const fig=e.target.closest && e.target.closest("#photoGrid .slot.photo");
+  if(dragFrom!=null && fig){ e.preventDefault(); $$("#photoGrid .slot.photo").forEach(f=>f.classList.toggle("target", f===fig)); return; }
+  if(e.dataTransfer && [...e.dataTransfer.types].includes("Files")){ e.preventDefault(); const dz=$("#photoBox"); dz&&dz.classList.add("dropping"); }
 });
-document.addEventListener("dragleave", e => { if(e.target.id==="drop") e.target.classList.remove("over"); });
+document.addEventListener("dragleave", e => { const b=$("#photoBox"); if(b && !b.contains(e.relatedTarget)) b.classList.remove("dropping"); });
 document.addEventListener("drop", e => {
   if(S.route!=="sell"&&S.route!=="edit") return;
-  const fig=e.target.closest && e.target.closest("#photoGrid figure");
+  const fig=e.target.closest && e.target.closest("#photoGrid .slot.photo");
   if(dragFrom!=null && fig){ e.preventDefault(); const to=Number(fig.dataset.i), p=S.draft.photos; const [m]=p.splice(dragFrom,1); p.splice(to,0,m); dragFrom=null; saveDraftLocal(); render(true); return; }
-  if(e.dataTransfer && e.dataTransfer.files.length){ e.preventDefault(); const dz=$("#drop"); dz&&dz.classList.remove("over"); addPhotos(e.dataTransfer.files); }
+  if(e.dataTransfer && e.dataTransfer.files.length){ e.preventDefault(); const dz=$("#photoBox"); dz&&dz.classList.remove("dropping"); addPhotos(e.dataTransfer.files); }
 });
 document.addEventListener("paste", e => { if((S.route==="sell"||S.route==="edit") && e.clipboardData && e.clipboardData.files.length) addPhotos(e.clipboardData.files); });
 $("#dlg").addEventListener("click", e => { if(e.target.id==="dlg") closeDialog(); });

@@ -5,7 +5,7 @@ A marketplace for buying and selling used Apple devices with local pickup across
 ## Features
 
 - **US locations**: every listing has a state (all 50 + DC) and city; shoppers pick a location, browse state and city pages (`#shop?state=AZ&city=Phoenix`), and see city chips with counts
-- **Listing upload**: drag-and-drop or paste up to 8 photos, reorder by dragging, first photo is the cover; model suggestions per device type; battery slider; draft autosaves
+- **Listing upload**: device tabs, photo slots (drag-and-drop or paste up to 8, reorder, first is primary), model suggestions, storage selector, battery capacity with status, Grade A/B/C cards, Activation Lock plus seller-confirmed checks (Face ID, clean IMEI, original parts), big price field with a market estimate from real listings, single "City, State" pickup field, live buyer-card preview; draft autosaves
 - **Shop**: search, device type, condition, price range, minimum battery health, Activation Lock filter, sorting, shareable filter links
 - **Item page**: photo gallery, inspection sheet, price-drop badge, view count, seller profile link, chat and offers, share link, report listing, similar listings nearby
 - **Accounts**: My listings (views, chats, saves per listing), Saved, public seller profiles, account settings with home location

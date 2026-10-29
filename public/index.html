@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Applesmart: buy and sell used Apple devices near you</title>
 <meta name="description" content="Buy and sell used iPhones, iPads, Macs, Apple Watches and AirPods in your city. Every listing shows battery health, condition and Activation Lock status. Local pickup across all 50 states.">
-<meta name="theme-color" content="#F5F6F8" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0B0D11" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F7F6FB" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E0F13" media="(prefers-color-scheme: dark)">
 <meta property="og:title" content="Applesmart: used Apple devices near you">
 <meta property="og:description" content="Local marketplace for used iPhones, iPads, Macs and more, across the US.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='7' fill='%230B7A66'/%3E%3Cpath d='M5.5 12a6.5 6.5 0 1 0 2.1-4.8M5.5 5v4.5H10' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='7' fill='%230F5C3F'/%3E%3Cpath d='M5.5 12a6.5 6.5 0 1 0 2.1-4.8M5.5 5v4.5H10' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -23,12 +23,14 @@
       <span class="mark" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3"/><path d="M3.5 3.5v5.5H9"/></svg></span>
       <b>Applesmart</b>
     </a>
+    <span class="pagelabel" id="pageLabel"></span>
     <button class="locbtn" id="locBtn" data-act="openLoc" aria-label="Change location"></button>
     <form class="search" id="searchForm" role="search">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input id="q" type="search" placeholder="Search iPhone 15 Pro, MacBook Air M2…" aria-label="Search listings" autocomplete="off">
     </form>
     <nav class="nav" aria-label="Main">
+      <a class="iconbtn bell" href="#inbox" aria-label="Notifications"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 1 0-12 0c0 6.5-2.5 8-2.5 8h17S18 15.5 18 9z"/><path d="M10.3 20.5a2 2 0 0 0 3.4 0"/></svg><span id="unreadBell"></span></a>
       <a class="iconbtn" href="#inbox" aria-label="Messages" title="Messages"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M20 15.5a2 2 0 0 1-2 2H8l-4 3.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg><span id="unread"></span></a>
       <a class="iconbtn" href="#saved" aria-label="Saved" title="Saved"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M12 20s-7-4.3-9-8.6C1.6 8 3.8 4.5 7.2 4.5c1.9 0 3.3 1 4.8 2.8 1.5-1.8 2.9-2.8 4.8-2.8 3.4 0 5.6 3.5 4.2 6.9C19 15.7 12 20 12 20z"/></svg></a>
       <a class="btn primary sellbtn" href="#sell"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Sell</a>
@@ -49,11 +51,11 @@
 </footer>
 
 <nav class="tabbar" aria-label="Mobile">
-  <a href="#home" data-tab="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4z"/></svg>Home</a>
-  <a href="#shop" data-tab="shop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg>Browse</a>
+  <a href="#home" data-tab="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>Browse</a>
+  <a href="#shop" data-tab="shop" data-act="focusSearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg>Search</a>
   <a href="#sell" data-tab="sell" class="tabsell"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>Sell</a>
   <a href="#inbox" data-tab="inbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M20 15.5a2 2 0 0 1-2 2H8l-4 3.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>Messages<i id="unreadTab"></i></a>
-  <a href="#mine" data-tab="mine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.2-3.6 4-5.5 7.5-5.5s6.3 1.9 7.5 5.5"/></svg>You</a>
+  <a href="#mine" data-tab="mine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.2-3.6 4-5.5 7.5-5.5s6.3 1.9 7.5 5.5"/></svg>Profile</a>
 </nav>
 
 <dialog id="dlg" aria-labelledby="dlgTitle"></dialog>

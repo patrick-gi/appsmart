@@ -112,6 +112,8 @@ async function migrate() {
     ALTER TABLE listings ADD COLUMN IF NOT EXISTS orig_price INT;
     ALTER TABLE listings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
     CREATE INDEX IF NOT EXISTS listings_state_city ON listings(state, city);
+    -- v3: seller-confirmed checks (Face ID works, clean IMEI, original parts)
+    ALTER TABLE listings ADD COLUMN IF NOT EXISTS checks TEXT[] NOT NULL DEFAULT '{}';
   `);
   await q(`DELETE FROM sessions WHERE expires_at < now()`);
 }
@@ -144,6 +146,7 @@ const GRADES = ["A", "B", "C"];
 const STATUSES = ["active", "reserved", "sold"];
 const REPORT_REASONS = ["scam", "stolen", "wrong-info", "offensive", "sold-elsewhere", "other"];
 const MAX_PHOTOS = 8;
+const CHECKS = ["faceid", "imei", "parts"];
 const str = (v, max) => String(v ?? "").trim().replace(/\s+/g, " ").slice(0, max);
 
 // "  saN   diego " -> "San Diego"; keeps "St. Louis", "Winston-Salem", "O'Fallon"
@@ -169,7 +172,7 @@ function listingOut(r) {
     id: r.id, sellerId: r.seller_id, sellerName: r.seller_name, title: r.title, cat: r.cat,
     storage: r.storage, grade: r.grade, battery: r.battery, lockOff: r.lock_off, price: r.price,
     origPrice: r.orig_price, city: r.city || r.area || "", state: r.state, desc: r.descr, photos: r.photos,
-    status: r.status, reservedFor: r.reserved_for, agreedPrice: r.agreed_price, views: r.views,
+    checks: r.checks || [], status: r.status, reservedFor: r.reserved_for, agreedPrice: r.agreed_price, views: r.views,
     createdAt: ms(r.created_at), updatedAt: ms(r.updated_at),
     ...(r.thread_count !== undefined ? { threadCount: Number(r.thread_count), saveCount: Number(r.save_count) } : {}),
   };
@@ -192,6 +195,7 @@ function validateListing(b) {
   const photos = Array.isArray(b.photos) ? b.photos.filter((p) => /^P[\w-]{6,40}$/.test(p)).slice(0, MAX_PHOTOS) : [];
   return {
     title, cat, grade, price, battery, state, city,
+    checks: Array.isArray(b.checks) ? [...new Set(b.checks.filter((c) => CHECKS.includes(c)))] : [],
     storage: str(b.storage, 12), lockOff: !!b.lockOff, desc: String(b.desc ?? "").trim().slice(0, 1200), photos,
   };
 }
@@ -358,9 +362,9 @@ app.post("/api/listings", wrap(async (req, res) => {
   const v = validateListing(req.body);
   const photos = await ownPhotos(u.id, v.photos);
   const id = newId("L");
-  await q(`INSERT INTO listings (id, seller_id, title, cat, storage, grade, battery, lock_off, price, city, state, descr, photos)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-    [id, u.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.city, v.state, v.desc, photos]);
+  await q(`INSERT INTO listings (id, seller_id, title, cat, storage, grade, battery, lock_off, price, city, state, descr, photos, checks)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+    [id, u.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.city, v.state, v.desc, photos, v.checks]);
   // remember the seller's location for next time if they haven't set one
   if (!u.state) await q(`UPDATE users SET city=$2, state=$3 WHERE id=$1`, [u.id, v.city, v.state]);
   res.status(201).json({ id });
@@ -381,8 +385,8 @@ app.put("/api/listings/:id", wrap(async (req, res) => {
   const ref = old.orig_price ?? old.price;
   const origPrice = v.price < ref ? ref : null;
   await q(`UPDATE listings SET title=$2, cat=$3, storage=$4, grade=$5, battery=$6, lock_off=$7, price=$8, city=$9, state=$10, descr=$11, photos=$12,
-             orig_price=$13, updated_at=now() WHERE id=$1`,
-    [req.params.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.city, v.state, v.desc, photos, origPrice]);
+             orig_price=$13, checks=$14, updated_at=now() WHERE id=$1`,
+    [req.params.id, v.title, v.cat, v.storage, v.grade, v.battery, v.lockOff, v.price, v.city, v.state, v.desc, photos, origPrice, v.checks]);
   const dropped = old.photos.filter((p) => !photos.includes(p));
   if (dropped.length) await q(`DELETE FROM photos WHERE owner_id=$1 AND id = ANY($2)`, [u.id, dropped]);
   res.json({ ok: true });
